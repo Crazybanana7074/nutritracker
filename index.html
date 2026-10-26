@@ -1,0 +1,2511 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>NutriTracker</title>
+
+  <!-- PWA manifest -->
+  <link rel="manifest" href="./manifest.json" />
+  <meta name="theme-color" content="#090d16" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="NutriTracker" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #020617;
+      color: #f8fafc;
+      margin: 0;
+      padding: 0;
+      overscroll-behavior-y: none;
+    }
+    .app-shell {
+      width: 100%;
+      max-width: 430px;
+      min-height: 100dvh;
+      margin: 0 auto;
+      background-color: #090d16;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      border-left: 1px solid #1e293b;
+      border-right: 1px solid #1e293b;
+    }
+    .scroll-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px 14px 88px 14px;
+    }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    input[type="range"] {
+      accent-color: #10b981;
+      height: 5px;
+      border-radius: 999px;
+    }
+    .ring-transition {
+      transition: stroke-dashoffset 0.4s ease, stroke 0.3s ease;
+    }
+  </style>
+</head>
+<body>
+
+<!-- TOP HEADER -->
+  <header class="sticky top-0 z-30 bg-[#090d16]/95 backdrop-blur-md border-b border-slate-800/80 px-4 py-3 flex items-center">
+    <div class="flex items-center gap-2">
+      <!-- Base64 Icon -->
+      <img src="./icons/icon-192.png" alt="NutriTracker Icon" class="w-7 h-7 rounded-lg object-cover" />
+      <h1 class="text-base font-extrabold tracking-tight text-white">NutriTracker</h1>
+    </div>
+    <button id="pwaInstallBtn" type="button" onclick="installNutriTracker()"
+      class="ml-auto text-[11px] font-bold text-slate-950 bg-emerald-500 hover:bg-emerald-400 px-3 py-2 rounded-lg transition">
+      Install App
+    </button>
+  </header>
+
+  <!-- MAIN CONTENT -->
+  <main class="scroll-area no-scrollbar">
+
+    <!-- TAB 1: TODAY -->
+    <section id="tab-today" class="space-y-3.5">
+      <div class="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 flex items-center justify-between">
+        <button onclick="shiftSelectedDate(-1)" class="text-slate-400 hover:text-white px-2 py-1 text-xs font-bold rounded-lg bg-slate-950 border border-slate-800" aria-label="Previous day">‹</button>
+        <div class="flex items-center gap-2">
+          <span id="activeDateLabel" class="text-xs font-bold text-slate-200">Today</span>
+          <button id="jumpTodayBtn" onclick="selectDate(getLocalDateStr())" class="hidden text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded">Today</button>
+        </div>
+        <button id="nextDayBtn" onclick="shiftSelectedDate(1)" class="text-slate-400 hover:text-white px-2 py-1 text-xs font-bold rounded-lg bg-slate-950 border border-slate-800" aria-label="Next day">›</button>
+      </div>
+
+      <div id="migrationBanner" class="hidden bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex items-start justify-between gap-2">
+        <p class="text-[11px] text-amber-200 leading-relaxed">
+          Existing food entries had no stored timestamp and were assigned to today so no data was lost.
+        </p>
+        <button onclick="dismissMigrationNotice()" class="text-amber-300 hover:text-white text-xs font-bold px-1.5 shrink-0">OK</button>
+      </div>
+
+      <!-- Summary Card -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+        <div class="flex items-center justify-between gap-4">
+          <div class="relative w-24 h-24 flex items-center justify-center shrink-0">
+            <svg class="w-24 h-24 -rotate-90" viewBox="0 0 100 100">
+              <circle cx="50" cy="50" r="42" stroke="#1e293b" stroke-width="10" fill="transparent" />
+              <circle id="calRingArc" cx="50" cy="50" r="42" stroke="#10b981" stroke-width="10"
+                stroke-dasharray="263.89" stroke-dashoffset="263.89" stroke-linecap="round" fill="transparent"
+                class="ring-transition" />
+            </svg>
+            <div class="absolute inset-0 flex flex-col items-center justify-center text-center">
+              <span id="calRemainingHero" class="text-lg font-extrabold text-white">0</span>
+              <span id="calRemainingLabel" class="text-[10px] font-semibold text-slate-400">left</span>
+            </div>
+          </div>
+
+          <div class="flex-1 space-y-2 text-xs">
+            <div class="flex justify-between">
+              <span class="text-slate-400">Target</span>
+              <span id="calTargetText" class="font-bold text-slate-200">0 kcal</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">Logged</span>
+              <span id="calLoggedText" class="font-bold text-emerald-400">0 kcal</span>
+            </div>
+            <div class="flex justify-between pt-1 border-t border-slate-800">
+              <span class="text-slate-400">Micros Met</span>
+              <span id="microSummaryBadge" class="font-bold text-sky-400">0/18</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-slate-800" id="primaryMacroGrid"></div>
+
+        <div class="mt-3 pt-2 border-t border-slate-800/60">
+          <button onclick="toggleSubMacros()" class="w-full flex items-center justify-between py-0.5 text-[11px] font-semibold text-slate-400">
+            <span>Fiber & Fats</span>
+            <span id="subMacroChevron" class="transition-transform duration-200">▼</span>
+          </button>
+          <div id="subMacroDrawer" class="hidden mt-2.5 space-y-2 pt-2 border-t border-slate-800/40"></div>
+        </div>
+      </div>
+
+      <!-- Sleep Card -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+        <div id="sleepCardSummary"></div>
+        <div id="sleepFormDrawer" class="hidden mt-3 pt-3 border-t border-slate-800 space-y-2.5">
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="text-[10px] text-slate-400 block mb-1">Bedtime</label>
+              <input id="sleepBedTimeInput" type="time" value="23:15" oninput="previewSleepDuration()" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white" />
+            </div>
+            <div>
+              <label class="text-[10px] text-slate-400 block mb-1">Wake Time</label>
+              <input id="sleepWakeTimeInput" type="time" value="07:05" oninput="previewSleepDuration()" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white" />
+            </div>
+          </div>
+          <div class="flex items-center justify-between text-[11px]">
+            <span id="sleepPreviewText" class="text-slate-400">Calculated: 7h 50m</span>
+            <span id="sleepErrorText" class="text-rose-400 font-semibold hidden"></span>
+          </div>
+          <div class="flex items-center justify-between gap-2 pt-1">
+            <button id="deleteSleepBtn" onclick="deleteSleepEntry()" class="hidden text-xs font-semibold text-rose-400 px-2.5 py-1.5 rounded-lg bg-rose-500/10">Delete</button>
+            <div class="flex gap-2 ml-auto">
+              <button onclick="closeSleepModal()" class="text-xs font-semibold text-slate-400 bg-slate-950 border border-slate-800 px-3 py-1.5 rounded-lg">Cancel</button>
+              <button onclick="saveSleepEntry()" class="text-xs font-bold text-slate-950 bg-emerald-500 px-3.5 py-1.5 rounded-lg">Save Sleep</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Logged Meals -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+        <div class="flex items-center justify-between mb-2.5">
+          <h2 id="dayLogHeading" class="text-xs font-bold uppercase tracking-wider text-slate-400">Today's Log</h2>
+          <button id="clearAllBtn" onclick="clearAllMeals()" class="hidden text-[11px] text-rose-400 font-semibold">Clear Day</button>
+        </div>
+        <div id="loggedMealsContainer" class="space-y-2"></div>
+      </div>
+    </section>
+
+    <!-- TAB 2: INSIGHTS -->
+    <section id="tab-insights" class="hidden space-y-3.5">
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3 space-y-2.5">
+        <div class="flex items-center justify-between">
+          <div class="grid grid-cols-2 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 w-40">
+            <button onclick="setInsightsMode('week')" id="ins-mode-week" class="bg-emerald-500 text-slate-950 font-bold text-xs py-1 rounded-lg">Week</button>
+            <button onclick="setInsightsMode('month')" id="ins-mode-month" class="text-slate-400 font-semibold text-xs py-1 rounded-lg">Month</button>
+          </div>
+          <span id="insightsCoverageBadge" class="text-[11px] font-semibold text-slate-400 bg-slate-950 border border-slate-800 px-2.5 py-1 rounded-lg">0 of 7 days tracked</span>
+        </div>
+
+        <div class="flex items-center justify-between pt-1">
+          <button onclick="shiftInsightsPeriod(-1)" class="text-slate-300 hover:text-white bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-xs font-bold">‹</button>
+          <span id="insightsRangeLabel" class="text-xs font-bold text-white">Oct 19 – Oct 25, 2026</span>
+          <button id="insightsNextBtn" onclick="shiftInsightsPeriod(1)" class="text-slate-300 hover:text-white bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-xs font-bold">›</button>
+        </div>
+      </div>
+
+      <div id="insightsKpiGrid" class="grid grid-cols-2 gap-2.5"></div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+        <div class="flex items-center justify-between">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">Trends</h3>
+          <span id="trendsSubtitle" class="text-[10px] text-slate-400">Tap a day to inspect</span>
+        </div>
+        <div id="insightsTrendsContainer" class="space-y-3"></div>
+      </div>
+
+      <details id="aiReviewDetails" class="bg-slate-900 border border-slate-800 rounded-2xl p-4 group">
+        <summary class="flex items-center justify-between cursor-pointer list-none">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <span class="text-xs font-bold text-white">AI Review</span>
+            <span class="text-[10px] text-slate-400">Period summary & next focus</span>
+          </div>
+          <span class="text-xs text-slate-400 group-open:rotate-180 transition-transform">▼</span>
+        </summary>
+        <div class="mt-3 pt-3 border-t border-slate-800 space-y-3">
+          <div id="aiConsentBox" class="bg-slate-950 border border-slate-800 rounded-xl p-3 space-y-2">
+            <p class="text-[11px] text-slate-300 leading-relaxed">
+              Only aggregated period metrics are sent directly to the Gemini API using your local key.
+            </p>
+            <label class="flex items-center gap-2 text-[11px] text-slate-200 cursor-pointer">
+              <input id="aiConsentCheckbox" type="checkbox" onchange="toggleAiConsent(this.checked)" class="accent-emerald-500 rounded" />
+              <span>I understand and allow sending aggregated stats for AI review</span>
+            </label>
+          </div>
+
+          <button id="generateAiBtn" onclick="generateAiReview()" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs py-2.5 rounded-xl transition">
+            Generate AI Review
+          </button>
+
+          <div id="aiReviewOutput" class="space-y-2.5 text-xs"></div>
+        </div>
+      </details>
+
+      <div id="insightsAccordions" class="space-y-2"></div>
+    </section>
+
+    <!-- TAB 3: ADD FOOD -->
+    <section id="tab-add" class="hidden space-y-3.5">
+      <!-- Meal Selector, Photo Button & Scan Hint Input -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3 space-y-2.5">
+        <div class="flex gap-2">
+          <select id="mealTypeSelect" class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none">
+            <option value="Breakfast">Breakfast</option>
+            <option value="Lunch">Lunch</option>
+            <option value="Dinner">Dinner</option>
+            <option value="Snack">Snack</option>
+          </select>
+          <label class="cursor-pointer bg-slate-950 hover:bg-slate-800 border border-slate-800 text-emerald-400 font-bold text-xs px-3.5 py-2 rounded-xl flex items-center gap-1.5 shrink-0 transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><circle cx="12" cy="13" r="3"/></svg>
+            <span>Scan Photo</span>
+            <input type="file" id="photoFileInput" accept="image/*" class="hidden" onchange="handlePhotoFileSelected(event)" />
+          </label>
+        </div>
+        <div>
+          <input id="photoHintInput" type="text"
+            oninput="syncPhotoHint(this.value)"
+            placeholder="Hinweis für KI (optional, z.B. 'Spaghetti Bolognese mit Rind')"
+            class="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 outline-none" />
+        </div>
+      </div>
+
+      <!-- Photo Preview & Analysis Card -->
+      <div id="photoPreviewCard" class="hidden bg-slate-900 border border-slate-800 rounded-2xl p-3 space-y-2.5">
+        <div class="relative w-full h-40 rounded-xl overflow-hidden bg-slate-950">
+          <img id="scannedImageEl" src="" alt="Scanned meal" class="w-full h-full object-cover opacity-90" />
+          <button onclick="closePhotoScan()" class="absolute top-2 right-2 bg-slate-950/80 hover:bg-slate-900 text-white text-xs px-2 py-1 rounded-lg border border-slate-800">✕</button>
+        </div>
+
+        <div class="space-y-2">
+          <div>
+            <label class="text-[10px] text-slate-400 block mb-1">Hinweis für die KI (Zutaten, Name, Mengenangabe):</label>
+            <input id="photoScanHintCard" type="text"
+              oninput="syncPhotoHint(this.value)"
+              placeholder="z.B. 'Spaghetti Bolognese mit 150g Rinderhack', 'ohne Käse'..."
+              class="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 outline-none" />
+          </div>
+          <button id="triggerScanBtn" onclick="runPhotoScanWithCurrentSettings()" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs py-2 rounded-xl transition flex items-center justify-center gap-1.5">
+            <span id="scanBtnLabel">Foto mit KI analysieren</span>
+            <span id="scanSpinner" class="hidden w-3 h-3 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></span>
+          </button>
+        </div>
+
+        <div id="photoScanStatus" class="text-xs space-y-1.5"></div>
+      </div>
+
+      <!-- Natural Language Input -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3 space-y-2.5">
+        <div class="flex gap-2">
+          <input id="nlpInput" type="text"
+            onkeydown="if(event.key==='Enter') runNlpParser()"
+            class="flex-1 bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 outline-none"
+            placeholder="e.g. 180g steak, 150g rice, 10g olive oil" />
+          <button onclick="runNlpParser()" class="bg-emerald-500 text-slate-950 font-bold text-xs px-3.5 py-2 rounded-xl shrink-0">
+            Parse
+          </button>
+        </div>
+
+        <!-- Draft Items Staging List -->
+        <div id="draftContainer" class="hidden space-y-2 pt-2 border-t border-slate-800">
+          <div id="draftItemsList" class="space-y-1.5"></div>
+          <button onclick="commitDraftItems()" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs py-2.5 rounded-xl transition">
+            Log Items
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick Foods List -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3 space-y-2">
+        <input id="quickFilterInput" type="text" oninput="renderQuickFoods()"
+          placeholder="Filter foods..."
+          class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500 outline-none" />
+        <div id="quickFoodList" class="space-y-1.5 max-h-72 overflow-y-auto no-scrollbar"></div>
+      </div>
+    </section>
+
+    <!-- TAB 4: MICROS -->
+    <section id="tab-micros" class="hidden space-y-3">
+      <div class="grid grid-cols-4 gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800">
+        <button onclick="setMicroFilter('all')" id="filter-all" class="bg-emerald-500 text-slate-950 font-bold text-xs py-1.5 rounded-lg">All</button>
+        <button onclick="setMicroFilter('mineral')" id="filter-mineral" class="text-slate-400 font-semibold text-xs py-1.5 rounded-lg">Minerals</button>
+        <button onclick="setMicroFilter('vitamin')" id="filter-vitamin" class="text-slate-400 font-semibold text-xs py-1.5 rounded-lg">Vitamins</button>
+        <button onclick="setMicroFilter('low')" id="filter-low" class="text-slate-400 font-semibold text-xs py-1.5 rounded-lg">Low</button>
+      </div>
+
+      <div id="microListContainer" class="space-y-2"></div>
+    </section>
+
+    <!-- TAB 5: GOALS -->
+    <section id="tab-goals" class="hidden space-y-3.5">
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label class="text-[11px] text-slate-400 block mb-1">Sex</label>
+            <select id="bioSex" onchange="recalculateTargets()" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white">
+              <option value="male" selected>Male</option>
+              <option value="female">Female</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-[11px] text-slate-400 block mb-1">Age</label>
+            <input id="bioAge" type="number" value="18" oninput="recalculateTargets()" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white" />
+          </div>
+          <div>
+            <label class="text-[11px] text-slate-400 block mb-1">Height (cm)</label>
+            <input id="bioHeight" type="number" value="178" oninput="recalculateTargets()" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white" />
+          </div>
+          <div>
+            <label class="text-[11px] text-slate-400 block mb-1">Weight (kg)</label>
+            <input id="bioWeight" type="number" step="0.5" value="78.5" oninput="recalculateTargets()" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white" />
+          </div>
+        </div>
+
+        <div>
+          <label class="text-[11px] text-slate-400 block mb-1">Activity</label>
+          <select id="bioActivity" onchange="recalculateTargets()" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white">
+            <option value="1.2">Sedentary</option>
+            <option value="1.375">Lightly Active</option>
+            <option value="1.55" selected>Moderately Active (3-5d/wk)</option>
+            <option value="1.725">Very Active</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="text-[11px] text-slate-400 block mb-1">Goal</label>
+          <select id="bioGoal" onchange="recalculateTargets()" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white">
+            <option value="-400">Cut (-400 kcal)</option>
+            <option value="0" selected>Maintain</option>
+            <option value="300">Lean Bulk (+300 kcal)</option>
+          </select>
+        </div>
+
+        <div id="bioSummaryBox" class="bg-slate-950 border border-slate-800 rounded-xl p-3 grid grid-cols-2 gap-2 text-xs"></div>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2">
+        <label class="text-[11px] text-slate-400 block">Gemini API Key (stored locally on device)</label>
+        <div class="flex gap-2">
+          <input id="apiKeyInput" type="password" placeholder="AIzaSy..." 
+            class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white outline-none" />
+          <button onclick="saveApiKey()" class="bg-emerald-500 text-slate-950 font-bold text-xs px-3 py-2 rounded-xl">
+            Save
+          </button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- TOAST -->
+  <div id="toastBanner" class="fixed bottom-16 left-1/2 -translate-x-1/2 z-50 hidden bg-emerald-500 text-slate-950 font-bold text-xs px-4 py-1.5 rounded-full shadow-lg">
+    Saved
+  </div>
+
+  <!-- BOTTOM NAVIGATION -->
+  <nav class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-40 bg-[#090d16]/95 backdrop-blur-md border-t border-slate-800 px-1.5 py-1.5 grid grid-cols-5 gap-1">
+    <button onclick="switchTab('today')" id="nav-today" class="flex flex-col items-center justify-center py-1 rounded-xl text-emerald-400">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+      <span class="text-[10px] font-bold mt-0.5">Today</span>
+    </button>
+    <button onclick="switchTab('insights')" id="nav-insights" class="flex flex-col items-center justify-center py-1 rounded-xl text-slate-400">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 19h16M7 16V9m5 7V5m5 11v-4"/></svg>
+      <span class="text-[10px] font-semibold mt-0.5">Insights</span>
+    </button>
+    <button onclick="switchTab('add')" id="nav-add" class="flex flex-col items-center justify-center py-1 rounded-xl text-slate-400">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+      <span class="text-[10px] font-semibold mt-0.5">Add</span>
+    </button>
+    <button onclick="switchTab('micros')" id="nav-micros" class="flex flex-col items-center justify-center py-1 rounded-xl text-slate-400">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      <span class="text-[10px] font-semibold mt-0.5">Micros</span>
+    </button>
+    <button onclick="switchTab('goals')" id="nav-goals" class="flex flex-col items-center justify-center py-1 rounded-xl text-slate-400">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+      <span class="text-[10px] font-semibold mt-0.5">Goals</span>
+    </button>
+  </nav>
+</div>
+
+<script>
+// =====================================================
+// 1. USDA NUTRIENT DATABASE (Per 100g)
+// =====================================================
+const USDA_DB = {
+  sirloin_steak: {
+    name: "Sirloin Steak (Lean)", defaultG: 180,
+    cal: 206, pro: 30.5, carbs: 0, fiber: 0, fat: 8.4, sat: 3.2, mono: 3.6, poly: 0.4,
+    micros: { vit_a_mcg: 2, vit_c_mg: 0, vit_d_mcg: 0.1, vit_e_mg: 0.3, vit_k_mcg: 1.5, vit_b1_mg: 0.1, vit_b2_mg: 0.25, vit_b3_mg: 7.6, vit_b6_mg: 0.65, vit_b9_mcg: 10, vit_b12_mcg: 2.8, sodium_mg: 58, potassium_mg: 370, magnesium_mg: 26, calcium_mg: 18, iron_mg: 2.6, zinc_mg: 6.2, phosphorus_mg: 245 }
+  },
+  ground_beef: {
+    name: "Lean Ground Beef (90%)", defaultG: 150,
+    cal: 217, pro: 26.1, carbs: 0, fiber: 0, fat: 11.8, sat: 4.6, mono: 5.0, poly: 0.4,
+    micros: { vit_a_mcg: 3, vit_c_mg: 0, vit_d_mcg: 0.1, vit_e_mg: 0.2, vit_k_mcg: 1.1, vit_b1_mg: 0.05, vit_b2_mg: 0.18, vit_b3_mg: 5.8, vit_b6_mg: 0.38, vit_b9_mcg: 9, vit_b12_mcg: 2.5, sodium_mg: 66, potassium_mg: 318, magnesium_mg: 21, calcium_mg: 18, iron_mg: 2.4, zinc_mg: 6.3, phosphorus_mg: 210 }
+  },
+  basmati_rice: {
+    name: "Basmati Rice (Cooked)", defaultG: 160,
+    cal: 130, pro: 2.9, carbs: 28.2, fiber: 0.6, fat: 0.3, sat: 0.1, mono: 0.1, poly: 0.1,
+    micros: { vit_a_mcg: 0, vit_c_mg: 0, vit_d_mcg: 0, vit_e_mg: 0.05, vit_k_mcg: 0, vit_b1_mg: 0.16, vit_b2_mg: 0.02, vit_b3_mg: 1.5, vit_b6_mg: 0.09, vit_b9_mcg: 58, vit_b12_mcg: 0, sodium_mg: 2, potassium_mg: 35, magnesium_mg: 12, calcium_mg: 10, iron_mg: 1.2, zinc_mg: 0.5, phosphorus_mg: 43 }
+  },
+  rolled_oats: {
+    name: "Rolled Oats (Dry)", defaultG: 80,
+    cal: 379, pro: 13.2, carbs: 67.7, fiber: 10.1, fat: 6.5, sat: 1.1, mono: 2.0, poly: 2.3,
+    micros: { vit_a_mcg: 0, vit_c_mg: 0, vit_d_mcg: 0, vit_e_mg: 0.42, vit_k_mcg: 2.0, vit_b1_mg: 0.46, vit_b2_mg: 0.15, vit_b3_mg: 1.1, vit_b6_mg: 0.1, vit_b9_mcg: 32, vit_b12_mcg: 0, sodium_mg: 6, potassium_mg: 362, magnesium_mg: 138, calcium_mg: 52, iron_mg: 4.25, zinc_mg: 3.6, phosphorus_mg: 410 }
+  },
+  baked_potato: {
+    name: "Baked Potato", defaultG: 220,
+    cal: 95, pro: 2.6, carbs: 21.4, fiber: 2.3, fat: 0.1, sat: 0.03, mono: 0, poly: 0.05,
+    micros: { vit_a_mcg: 1, vit_c_mg: 9.6, vit_d_mcg: 0, vit_e_mg: 0.04, vit_k_mcg: 2.0, vit_b1_mg: 0.06, vit_b2_mg: 0.05, vit_b3_mg: 1.4, vit_b6_mg: 0.31, vit_b9_mcg: 28, vit_b12_mcg: 0, sodium_mg: 10, potassium_mg: 550, magnesium_mg: 28, calcium_mg: 15, iron_mg: 1.08, zinc_mg: 0.36, phosphorus_mg: 70 }
+  },
+  greek_yogurt: {
+    name: "Greek Yogurt (2%)", defaultG: 200,
+    cal: 73, pro: 9.9, carbs: 3.8, fiber: 0, fat: 1.9, sat: 1.2, mono: 0.5, poly: 0.1,
+    micros: { vit_a_mcg: 18, vit_c_mg: 0.8, vit_d_mcg: 1.2, vit_e_mg: 0.04, vit_k_mcg: 0.2, vit_b1_mg: 0.04, vit_b2_mg: 0.23, vit_b3_mg: 0.2, vit_b6_mg: 0.06, vit_b9_mcg: 7, vit_b12_mcg: 0.75, sodium_mg: 36, potassium_mg: 141, magnesium_mg: 11, calcium_mg: 115, iron_mg: 0.07, zinc_mg: 0.6, phosphorus_mg: 135 }
+  },
+  pecans: {
+    name: "Pecans", defaultG: 30,
+    cal: 691, pro: 9.2, carbs: 13.9, fiber: 9.6, fat: 72.0, sat: 6.2, mono: 40.8, poly: 21.6,
+    micros: { vit_a_mcg: 3, vit_c_mg: 1.1, vit_d_mcg: 0, vit_e_mg: 1.4, vit_k_mcg: 3.5, vit_b1_mg: 0.66, vit_b2_mg: 0.13, vit_b3_mg: 1.17, vit_b6_mg: 0.21, vit_b9_mcg: 22, vit_b12_mcg: 0, sodium_mg: 0, potassium_mg: 410, magnesium_mg: 121, calcium_mg: 70, iron_mg: 2.53, zinc_mg: 4.53, phosphorus_mg: 277 }
+  },
+  broccoli_steamed: {
+    name: "Broccoli (Steamed)", defaultG: 120,
+    cal: 35, pro: 2.4, carbs: 7.2, fiber: 3.3, fat: 0.4, sat: 0.05, mono: 0.04, poly: 0.17,
+    micros: { vit_a_mcg: 77, vit_c_mg: 64.9, vit_d_mcg: 0, vit_e_mg: 1.45, vit_k_mcg: 141, vit_b1_mg: 0.06, vit_b2_mg: 0.12, vit_b3_mg: 0.55, vit_b6_mg: 0.2, vit_b9_mcg: 108, vit_b12_mcg: 0, sodium_mg: 41, potassium_mg: 293, magnesium_mg: 21, calcium_mg: 40, iron_mg: 0.67, zinc_mg: 0.45, phosphorus_mg: 67 }
+  },
+  spinach_sauteed: {
+    name: "Spinach (Cooked)", defaultG: 120,
+    cal: 23, pro: 2.9, carbs: 3.8, fiber: 2.4, fat: 0.3, sat: 0.05, mono: 0.01, poly: 0.15,
+    micros: { vit_a_mcg: 524, vit_c_mg: 9.8, vit_d_mcg: 0, vit_e_mg: 2.1, vit_k_mcg: 493, vit_b1_mg: 0.09, vit_b2_mg: 0.24, vit_b3_mg: 0.49, vit_b6_mg: 0.24, vit_b9_mcg: 146, vit_b12_mcg: 0, sodium_mg: 70, potassium_mg: 466, magnesium_mg: 87, calcium_mg: 136, iron_mg: 3.57, zinc_mg: 0.76, phosphorus_mg: 56 }
+  },
+  avocado: {
+    name: "Avocado", defaultG: 80,
+    cal: 160, pro: 2.0, carbs: 8.5, fiber: 6.7, fat: 14.7, sat: 2.1, mono: 9.8, poly: 1.8,
+    micros: { vit_a_mcg: 7, vit_c_mg: 10.0, vit_d_mcg: 0, vit_e_mg: 2.07, vit_k_mcg: 21.0, vit_b1_mg: 0.07, vit_b2_mg: 0.13, vit_b3_mg: 1.74, vit_b6_mg: 0.26, vit_b9_mcg: 81, vit_b12_mcg: 0, sodium_mg: 7, potassium_mg: 485, magnesium_mg: 29, calcium_mg: 12, iron_mg: 0.55, zinc_mg: 0.64, phosphorus_mg: 52 }
+  },
+  blueberries: {
+    name: "Blueberries", defaultG: 100,
+    cal: 57, pro: 0.7, carbs: 14.5, fiber: 2.4, fat: 0.3, sat: 0.03, mono: 0.05, poly: 0.15,
+    micros: { vit_a_mcg: 3, vit_c_mg: 9.7, vit_d_mcg: 0, vit_e_mg: 0.57, vit_k_mcg: 19.3, vit_b1_mg: 0.04, vit_b2_mg: 0.04, vit_b3_mg: 0.42, vit_b6_mg: 0.05, vit_b9_mcg: 6, vit_b12_mcg: 0, sodium_mg: 1, potassium_mg: 77, magnesium_mg: 6, calcium_mg: 6, iron_mg: 0.28, zinc_mg: 0.16, phosphorus_mg: 12 }
+  },
+  banana: {
+    name: "Banana", defaultG: 120,
+    cal: 89, pro: 1.1, carbs: 22.8, fiber: 2.6, fat: 0.3, sat: 0.1, mono: 0.03, poly: 0.07,
+    micros: { vit_a_mcg: 3, vit_c_mg: 8.7, vit_d_mcg: 0, vit_e_mg: 0.1, vit_k_mcg: 0.5, vit_b1_mg: 0.03, vit_b2_mg: 0.07, vit_b3_mg: 0.67, vit_b6_mg: 0.37, vit_b9_mcg: 20, vit_b12_mcg: 0, sodium_mg: 1, potassium_mg: 358, magnesium_mg: 27, calcium_mg: 5, iron_mg: 0.26, zinc_mg: 0.15, phosphorus_mg: 22 }
+  },
+  olive_oil: {
+    name: "Olive Oil", defaultG: 10,
+    cal: 884, pro: 0, carbs: 0, fiber: 0, fat: 100, sat: 13.8, mono: 73.0, poly: 10.5,
+    micros: { vit_a_mcg: 0, vit_c_mg: 0, vit_d_mcg: 0, vit_e_mg: 14.35, vit_k_mcg: 60.2, vit_b1_mg: 0, vit_b2_mg: 0, vit_b3_mg: 0, vit_b6_mg: 0, vit_b9_mcg: 0, vit_b12_mcg: 0, sodium_mg: 2, potassium_mg: 1, magnesium_mg: 0, calcium_mg: 1, iron_mg: 0.56, zinc_mg: 0, phosphorus_mg: 0 }
+  }
+};
+
+const MICRO_META = [
+  { key: 'sodium_mg', label: 'Sodium', unit: 'mg', cat: 'mineral', isCap: true },
+  { key: 'potassium_mg', label: 'Potassium', unit: 'mg', cat: 'mineral' },
+  { key: 'magnesium_mg', label: 'Magnesium', unit: 'mg', cat: 'mineral' },
+  { key: 'calcium_mg', label: 'Calcium', unit: 'mg', cat: 'mineral' },
+  { key: 'iron_mg', label: 'Iron', unit: 'mg', cat: 'mineral' },
+  { key: 'zinc_mg', label: 'Zinc', unit: 'mg', cat: 'mineral' },
+  { key: 'phosphorus_mg', label: 'Phosphorus', unit: 'mg', cat: 'mineral' },
+  { key: 'vit_a_mcg', label: 'Vitamin A', unit: 'mcg', cat: 'vitamin' },
+  { key: 'vit_c_mg', label: 'Vitamin C', unit: 'mg', cat: 'vitamin' },
+  { key: 'vit_d_mcg', label: 'Vitamin D', unit: 'mcg', cat: 'vitamin' },
+  { key: 'vit_e_mg', label: 'Vitamin E', unit: 'mg', cat: 'vitamin' },
+  { key: 'vit_k_mcg', label: 'Vitamin K', unit: 'mcg', cat: 'vitamin' },
+  { key: 'vit_b1_mg', label: 'Vitamin B1', unit: 'mg', cat: 'vitamin' },
+  { key: 'vit_b2_mg', label: 'Vitamin B2', unit: 'mg', cat: 'vitamin' },
+  { key: 'vit_b3_mg', label: 'Vitamin B3', unit: 'mg', cat: 'vitamin' },
+  { key: 'vit_b6_mg', label: 'Vitamin B6', unit: 'mg', cat: 'vitamin' },
+  { key: 'vit_b9_mcg', label: 'Vitamin B9 (Folate)', unit: 'mcg', cat: 'vitamin' },
+  { key: 'vit_b12_mcg', label: 'Vitamin B12', unit: 'mcg', cat: 'vitamin' }
+];
+
+// Helper to extract nutrient profile (works for USDA items and custom AI dishes)
+function getNutrientProfile(item) {
+  if (!item) return null;
+  if (item.isCustom && item.nutrientsPer100g) {
+    return {
+      name: item.name || 'Custom Meal',
+      defaultG: item.baseGrams || item.grams || 100,
+      cal: Number(item.nutrientsPer100g.cal) || 0,
+      pro: Number(item.nutrientsPer100g.pro) || 0,
+      carbs: Number(item.nutrientsPer100g.carbs) || 0,
+      fiber: Number(item.nutrientsPer100g.fiber) || 0,
+      fat: Number(item.nutrientsPer100g.fat) || 0,
+      sat: Number(item.nutrientsPer100g.sat) || 0,
+      mono: Number(item.nutrientsPer100g.mono) || 0,
+      poly: Number(item.nutrientsPer100g.poly) || 0,
+      micros: item.nutrientsPer100g.micros || {}
+    };
+  }
+  return USDA_DB[item.foodKey] || null;
+}
+
+// =====================================================
+// 2. STATE & PERSISTENCE
+// =====================================================
+const LEGACY_STORAGE_KEY = 'nutritracker_v1';
+const STORAGE_KEY = 'nutritracker_v2';
+
+function getLocalDateStr(d = new Date()) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function parseLocalDate(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d, 12, 0, 0);
+}
+
+function addDays(dateStr, delta) {
+  const d = parseLocalDate(dateStr);
+  d.setDate(d.getDate() + delta);
+  return getLocalDateStr(d);
+}
+
+function getMondayOfWeek(dateStr) {
+  const d = parseLocalDate(dateStr);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  return getLocalDateStr(d);
+}
+
+function getDaysInMonth(year, monthIndex) {
+  return new Date(year, monthIndex + 1, 0).getDate();
+}
+
+function formatHumanDate(dateStr) {
+  const today = getLocalDateStr();
+  if (dateStr === today) return `Today · ${dateStr}`;
+  if (dateStr === addDays(today, -1)) return `Yesterday · ${dateStr}`;
+  const d = parseLocalDate(dateStr);
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatShortRange(startStr, endStr) {
+  const s = parseLocalDate(startStr);
+  const e = parseLocalDate(endStr);
+  const sFmt = s.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const eFmt = e.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return `${sFmt} – ${eFmt}`;
+}
+
+let state = {
+  schemaVersion: 2,
+  activeTab: 'today',
+  selectedDate: getLocalDateStr(),
+  subMacrosOpen: false,
+  microFilter: 'all',
+  migrationNoticePending: false,
+  aiConsentGiven: false,
+  insights: {
+    mode: 'week',
+    anchorDate: getLocalDateStr(),
+    aiLoading: false,
+    aiError: null,
+    aiResult: null
+  },
+  profile: {
+    sex: 'male',
+    age: 18,
+    height: 178,
+    weight: 78.5,
+    activity: 1.55,
+    goalDelta: 0
+  },
+  targets: {
+    cal: 2850, pro: 165, carbs: 340, netCarbs: 302, fiber: 38,
+    fat: 88, satCap: 26, mono: 35, poly: 20,
+    sleepMinutes: 480,
+    micros: {
+      vit_a_mcg: 900, vit_c_mg: 90, vit_d_mcg: 20, vit_e_mg: 15, vit_k_mcg: 120,
+      vit_b1_mg: 1.2, vit_b2_mg: 1.3, vit_b3_mg: 16, vit_b6_mg: 1.7, vit_b9_mcg: 400, vit_b12_mcg: 2.4,
+      sodium_mg: 2300, potassium_mg: 3400, magnesium_mg: 420, calcium_mg: 1000,
+      iron_mg: 8, zinc_mg: 11, phosphorus_mg: 700
+    }
+  },
+  loggedItems: [],
+  sleepLogs: [],
+  draftItems: []
+};
+
+// Global cache for current scanned image to allow re-analysis with modified hints
+let currentScanImage = null;
+
+function saveState() {
+  try {
+    const payload = {
+      schemaVersion: 2,
+      selectedDate: state.selectedDate,
+      profile: state.profile,
+      loggedItems: state.loggedItems,
+      sleepLogs: state.sleepLogs,
+      migrationNoticePending: state.migrationNoticePending,
+      aiConsentGiven: state.aiConsentGiven
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  } catch (err) {
+    showToast('Storage error: Could not save data');
+  }
+}
+
+function loadState() {
+  const today = getLocalDateStr();
+  try {
+    const savedKey = localStorage.getItem('nutritracker_gemini_key');
+    if (savedKey) {
+      const keyEl = document.getElementById('apiKeyInput');
+      if (keyEl) keyEl.value = savedKey;
+    }
+
+    const v2Raw = localStorage.getItem(STORAGE_KEY);
+    if (v2Raw) {
+      const parsed = JSON.parse(v2Raw);
+      if (parsed.profile) state.profile = { ...state.profile, ...parsed.profile };
+      if (Array.isArray(parsed.loggedItems)) {
+        state.loggedItems = parsed.loggedItems.filter(i => i && (USDA_DB[i.foodKey] || i.isCustom) && i.grams > 0).map(i => ({
+          id: i.id || (Date.now() + Math.random()),
+          date: typeof i.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(i.date) ? i.date : today,
+          createdAt: i.createdAt || Date.now(),
+          meal: i.meal || 'Snack',
+          foodKey: i.foodKey || null,
+          isCustom: Boolean(i.isCustom),
+          name: i.name || (i.foodKey && USDA_DB[i.foodKey] ? USDA_DB[i.foodKey].name : 'Food'),
+          grams: Number(i.grams) || 100,
+          baseGrams: Number(i.baseGrams) || Number(i.grams) || 100,
+          ingredients: Array.isArray(i.ingredients) ? i.ingredients : [],
+          nutrientsPer100g: i.nutrientsPer100g || null,
+          legacyMigrated: Boolean(i.legacyMigrated)
+        }));
+      }
+      if (Array.isArray(parsed.sleepLogs)) {
+        state.sleepLogs = parsed.sleepLogs.filter(s => s && /^\d{4}-\d{2}-\d{2}$/.test(s.date) && s.durationMinutes > 0);
+      }
+      state.migrationNoticePending = Boolean(parsed.migrationNoticePending);
+      state.aiConsentGiven = Boolean(parsed.aiConsentGiven);
+      syncProfileInputsFromState();
+      return;
+    }
+
+    const v1Raw = localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (v1Raw) {
+      const legacy = JSON.parse(v1Raw);
+      if (Array.isArray(legacy.loggedItems) && legacy.loggedItems.length > 0) {
+        state.loggedItems = legacy.loggedItems
+          .filter(i => i && USDA_DB[i.foodKey])
+          .map((item, idx) => ({
+            id: item.id || (Date.now() + idx),
+            date: today,
+            createdAt: Date.now(),
+            meal: item.meal || 'Meal',
+            foodKey: item.foodKey,
+            isCustom: false,
+            name: USDA_DB[item.foodKey].name,
+            grams: Number(item.grams) || USDA_DB[item.foodKey].defaultG,
+            baseGrams: Number(item.grams) || USDA_DB[item.foodKey].defaultG,
+            ingredients: [],
+            nutrientsPer100g: null,
+            legacyMigrated: true
+          }));
+        state.migrationNoticePending = true;
+      }
+      saveState();
+    }
+  } catch (err) {
+    console.error('State load error:', err);
+  }
+  syncProfileInputsFromState();
+}
+
+function dismissMigrationNotice() {
+  state.migrationNoticePending = false;
+  saveState();
+  renderApp();
+}
+
+function syncProfileInputsFromState() {
+  const p = state.profile;
+  const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = String(v); };
+  setVal('bioSex', p.sex);
+  setVal('bioAge', p.age);
+  setVal('bioHeight', p.height);
+  setVal('bioWeight', p.weight);
+  setVal('bioActivity', p.activity);
+  setVal('bioGoal', p.goalDelta);
+}
+
+// =====================================================
+// 3. CALCULATIONS
+// =====================================================
+function getItemsForDate(dateStr) {
+  return state.loggedItems.filter(item => item.date === dateStr);
+}
+
+function getSleepForDate(dateStr) {
+  return state.sleepLogs.find(s => s.date === dateStr) || null;
+}
+
+function computeTotalsForDate(dateStr) {
+  const items = getItemsForDate(dateStr);
+  const totals = {
+    date: dateStr,
+    itemCount: items.length,
+    isTracked: false,
+    cal: 0, pro: 0, carbs: 0, fiber: 0, netCarbs: 0,
+    fat: 0, sat: 0, mono: 0, poly: 0,
+    micros: {},
+    microHitCount: 0,
+    microCoveragePct: 0
+  };
+  MICRO_META.forEach(m => totals.micros[m.key] = 0);
+
+  items.forEach(entry => {
+    const f = getNutrientProfile(entry);
+    if (!f) return;
+    const scale = entry.grams / 100.0;
+    totals.cal += f.cal * scale;
+    totals.pro += f.pro * scale;
+    totals.carbs += f.carbs * scale;
+    totals.fiber += f.fiber * scale;
+    totals.fat += f.fat * scale;
+    totals.sat += f.sat * scale;
+    totals.mono += f.mono * scale;
+    totals.poly += f.poly * scale;
+    MICRO_META.forEach(m => {
+      totals.micros[m.key] += (f.micros[m.key] || 0) * scale;
+    });
+  });
+
+  totals.netCarbs = Math.max(0, totals.carbs - totals.fiber);
+  totals.isTracked = totals.itemCount > 0 && totals.cal > 0;
+
+  if (totals.isTracked) {
+    let ratioSum = 0;
+    let hits = 0;
+    MICRO_META.forEach(m => {
+      const val = totals.micros[m.key] || 0;
+      const goal = state.targets.micros[m.key] || 1;
+      if (m.isCap) {
+        const ok = val <= goal;
+        if (ok) hits++;
+        ratioSum += ok ? 1 : Math.max(0, 1 - ((val - goal) / goal));
+      } else {
+        if (val >= goal * 0.9) hits++;
+        ratioSum += Math.min(1, val / goal);
+      }
+    });
+    totals.microHitCount = hits;
+    totals.microCoveragePct = Math.round((ratioSum / MICRO_META.length) * 100);
+  }
+
+  return totals;
+}
+
+function getStatusColor(logged, target, isCap = false) {
+  const ratio = target > 0 ? logged / target : 0;
+  if (isCap) {
+    if (ratio > 1.0) return { hex: '#f43f5e', textClass: 'text-rose-400', bgClass: 'bg-rose-500' };
+    if (ratio >= 0.85) return { hex: '#f59e0b', textClass: 'text-amber-400', bgClass: 'bg-amber-400' };
+    return { hex: '#10b981', textClass: 'text-emerald-400', bgClass: 'bg-emerald-400' };
+  } else {
+    if (ratio >= 0.9) return { hex: '#10b981', textClass: 'text-emerald-400', bgClass: 'bg-emerald-400' };
+    if (ratio >= 0.5) return { hex: '#f59e0b', textClass: 'text-amber-400', bgClass: 'bg-amber-400' };
+    return { hex: '#38bdf8', textClass: 'text-sky-400', bgClass: 'bg-sky-400' };
+  }
+}
+
+// =====================================================
+// 4. RENDER UI
+// =====================================================
+function renderApp() {
+  const today = getLocalDateStr();
+  const isToday = state.selectedDate === today;
+
+  document.getElementById('activeDateLabel').textContent = formatHumanDate(state.selectedDate);
+  document.getElementById('jumpTodayBtn').classList.toggle('hidden', isToday);
+  const nextDayBtn = document.getElementById('nextDayBtn');
+  nextDayBtn.disabled = isToday;
+  nextDayBtn.className = isToday
+    ? 'text-slate-700 px-2 py-1 text-xs font-bold rounded-lg bg-slate-950/40 border border-slate-800/40 cursor-not-allowed'
+    : 'text-slate-400 hover:text-white px-2 py-1 text-xs font-bold rounded-lg bg-slate-950 border border-slate-800';
+
+  document.getElementById('migrationBanner').classList.toggle('hidden', !state.migrationNoticePending);
+  document.getElementById('dayLogHeading').textContent = isToday ? "Today's Log" : `Log · ${state.selectedDate}`;
+
+  const logged = computeTotalsForDate(state.selectedDate);
+  const t = state.targets;
+
+  const calRem = t.cal - logged.cal;
+  const calRatio = Math.min(1, logged.cal / t.cal);
+  const circumference = 263.89;
+  const arc = document.getElementById('calRingArc');
+  arc.style.strokeDashoffset = circumference - (calRatio * circumference);
+  const calColor = getStatusColor(logged.cal, t.cal, true);
+  arc.style.stroke = calColor.hex;
+
+  document.getElementById('calRemainingHero').textContent =
+    calRem >= 0 ? Math.round(calRem) : `+${Math.abs(Math.round(calRem))}`;
+  document.getElementById('calRemainingLabel').textContent =
+    calRem >= 0 ? 'kcal left' : 'kcal over';
+  document.getElementById('calTargetText').textContent = `${Math.round(t.cal)} kcal`;
+  document.getElementById('calLoggedText').textContent = `${Math.round(logged.cal)} kcal`;
+  document.getElementById('microSummaryBadge').textContent = `${logged.microHitCount}/18`;
+
+  const primaryMacros = [
+    { label: 'Protein', val: logged.pro, goal: t.pro },
+    { label: 'Net Carbs', val: logged.netCarbs, goal: t.netCarbs },
+    { label: 'Fat', val: logged.fat, goal: t.fat }
+  ];
+  document.getElementById('primaryMacroGrid').innerHTML = primaryMacros.map(m => {
+    const rem = m.goal - m.val;
+    const pct = Math.min(100, Math.round((m.val / m.goal) * 100));
+    const col = getStatusColor(m.val, m.goal, false);
+    return `
+      <div class="bg-slate-950 border border-slate-800/80 rounded-xl p-2.5">
+        <div class="flex justify-between items-center text-[11px]">
+          <span class="font-bold text-slate-200">${m.label}</span>
+          <span class="text-[10px] text-slate-400">${Math.round(m.val)}/${m.goal}g</span>
+        </div>
+        <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden my-1.5">
+          <div class="h-full ${col.bgClass}" style="width:${pct}%"></div>
+        </div>
+        <div class="text-[10px] font-bold ${col.textClass}">
+          ${rem >= 0 ? `${Math.round(rem)}g left` : `${Math.abs(Math.round(rem))}g over`}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  const subMacros = [
+    { label: 'Total Carbs', val: logged.carbs, goal: t.carbs, isCap: false },
+    { label: 'Fiber', val: logged.fiber, goal: t.fiber, isCap: false },
+    { label: 'Saturated Fat', val: logged.sat, goal: t.satCap, isCap: true },
+    { label: 'Monounsaturated', val: logged.mono, goal: t.mono, isCap: false },
+    { label: 'Polyunsaturated', val: logged.poly, goal: t.poly, isCap: false }
+  ];
+  document.getElementById('subMacroDrawer').innerHTML = subMacros.map(m => {
+    const rem = m.goal - m.val;
+    const pct = Math.min(100, Math.round((m.val / m.goal) * 100));
+    const col = getStatusColor(m.val, m.goal, m.isCap);
+    return `
+      <div class="space-y-1">
+        <div class="flex justify-between text-[11px]">
+          <span class="text-slate-300">${m.label}</span>
+          <span class="${col.textClass} font-semibold">
+            ${m.val.toFixed(1)}/${m.goal}g (${rem >= 0 ? `${rem.toFixed(1)}g left` : `${Math.abs(rem).toFixed(1)}g over`})
+          </span>
+        </div>
+        <div class="w-full h-1 bg-slate-950 rounded-full overflow-hidden">
+          <div class="h-full ${col.bgClass}" style="width:${pct}%"></div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  renderSleepCard();
+
+  const dayItems = getItemsForDate(state.selectedDate);
+  const mealContainer = document.getElementById('loggedMealsContainer');
+  const clearBtn = document.getElementById('clearAllBtn');
+  clearBtn.classList.toggle('hidden', dayItems.length === 0);
+
+  if (dayItems.length === 0) {
+    mealContainer.innerHTML = `
+      <div class="text-center py-5">
+        <p class="text-xs text-slate-500">No food logged on ${state.selectedDate}</p>
+      </div>`;
+  } else {
+    mealContainer.innerHTML = dayItems.map(item => {
+      const f = getNutrientProfile(item);
+      if (!f) return '';
+      const kcal = Math.round((f.cal * item.grams) / 100);
+      const isCustom = Boolean(item.isCustom);
+      
+      let ingredientHtml = '';
+      if (isCustom && Array.isArray(item.ingredients) && item.ingredients.length > 0) {
+        const scale = item.grams / (item.baseGrams || item.grams || 1);
+        ingredientHtml = `
+          <div class="text-[10px] text-slate-400 pl-2 border-l-2 border-emerald-500/50 mt-1">
+            <span class="text-slate-300 font-semibold">Zutaten: </span>
+            ${item.ingredients.map(ing => `${escapeHtml(ing.name)} (${Math.round(ing.grams * scale)}g)`).join(', ')}
+          </div>
+        `;
+      }
+
+      return `
+        <div class="bg-slate-950 border border-slate-800/80 rounded-xl p-2.5 space-y-1.5">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">${item.meal}</span>
+              <span class="text-xs font-bold text-white">${escapeHtml(f.name)}</span>
+              ${isCustom ? '<span class="text-[9px] font-bold text-indigo-300 bg-indigo-500/20 px-1.5 py-0.2 rounded">KI-Gericht</span>' : ''}
+            </div>
+            <button onclick="removeLoggedItem(${item.id})" class="text-slate-500 hover:text-rose-400 text-xs px-1">✕</button>
+          </div>
+          ${ingredientHtml}
+          <div class="flex items-center gap-3 pt-0.5">
+            <input type="range" min="10" max="${Math.max(650, item.grams * 2)}" step="5" value="${item.grams}"
+              oninput="updateLoggedGrams(${item.id}, this.value)" class="flex-1" />
+            <span class="text-[11px] text-slate-300 w-28 text-right font-semibold">${item.grams}g · ${kcal} kcal</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  renderMicrosTab(logged);
+  if (state.activeTab === 'insights') renderInsightsTab();
+}
+
+function renderMicrosTab(logged) {
+  const t = state.targets.micros;
+  const filtered = MICRO_META.filter(m => {
+    if (state.microFilter === 'mineral') return m.cat === 'mineral';
+    if (state.microFilter === 'vitamin') return m.cat === 'vitamin';
+    if (state.microFilter === 'low') {
+      const val = logged.micros[m.key] || 0;
+      const goal = t[m.key] || 1;
+      return m.isCap ? val > goal : (val / goal) < 0.75;
+    }
+    return true;
+  });
+
+  document.getElementById('microListContainer').innerHTML = filtered.map(m => {
+    const val = logged.micros[m.key] || 0;
+    const goal = t[m.key] || 1;
+    const rem = goal - val;
+    const pct = Math.min(100, Math.round((val / goal) * 100));
+    const col = getStatusColor(val, goal, m.isCap);
+
+    return `
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-3">
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-xs font-bold text-white">${m.label}</span>
+          <span class="text-xs font-bold ${col.textClass}">
+            ${rem >= 0 ? `${rem.toFixed(1)} ${m.unit} left` : `${Math.abs(rem).toFixed(1)} ${m.unit} over`}
+          </span>
+        </div>
+        <div class="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden mb-1">
+          <div class="h-full ${col.bgClass}" style="width:${pct}%"></div>
+        </div>
+        <div class="flex justify-between text-[10px] text-slate-400">
+          <span>${val.toFixed(1)} / ${goal} ${m.unit}</span>
+          <span>${pct}%</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// =====================================================
+// 5. ADD FOOD (SEARCH, QUICK TAP & SMART PHOTO SCAN)
+// =====================================================
+function renderQuickFoods() {
+  const q = (document.getElementById('quickFilterInput')?.value || '').toLowerCase();
+  const entries = Object.entries(USDA_DB).filter(([_, f]) => f.name.toLowerCase().includes(q));
+
+  document.getElementById('quickFoodList').innerHTML = entries.map(([key, f]) => {
+    const kcal = Math.round((f.cal * f.defaultG) / 100);
+    return `
+      <div class="flex items-center justify-between bg-slate-950 border border-slate-800/80 rounded-xl px-3 py-2">
+        <div>
+          <div class="text-xs font-bold text-white">${f.name}</div>
+          <div class="text-[10px] text-slate-400">${f.defaultG}g · ${kcal} kcal · ${((f.pro * f.defaultG)/100).toFixed(1)}g P</div>
+        </div>
+        <button onclick="quickLogFood('${key}')" class="bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 font-bold text-xs px-2.5 py-1 rounded-lg">
+          + Add
+        </button>
+      </div>
+    `;
+  }).join('');
+}
+
+function quickLogFood(foodKey) {
+  const meal = document.getElementById('mealTypeSelect').value;
+  const f = USDA_DB[foodKey];
+  state.loggedItems.push({
+    id: Date.now() + Math.random(),
+    date: state.selectedDate,
+    createdAt: Date.now(),
+    meal,
+    foodKey,
+    isCustom: false,
+    name: f.name,
+    grams: f.defaultG,
+    baseGrams: f.defaultG,
+    ingredients: [],
+    nutrientsPer100g: null
+  });
+  saveState();
+  renderApp();
+  showToast(`Added to ${state.selectedDate}`);
+}
+
+const SUPPORTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+
+function syncPhotoHint(val) {
+  const h1 = document.getElementById('photoHintInput');
+  const h2 = document.getElementById('photoScanHintCard');
+  if (h1 && h1.value !== val) h1.value = val;
+  if (h2 && h2.value !== val) h2.value = val;
+}
+
+function getPhotoHint() {
+  const h1 = document.getElementById('photoHintInput')?.value?.trim() || '';
+  const h2 = document.getElementById('photoScanHintCard')?.value?.trim() || '';
+  return h2 || h1 || '';
+}
+
+function setPhotoStatusHtml(html) {
+  const box = document.getElementById('photoScanStatus');
+  if (box) box.innerHTML = html;
+}
+
+function compressAndEncodeImage(file, maxDim = 1024, quality = 0.82) {
+  return new Promise(async (resolve, reject) => {
+    try {
+      let targetBlob = file;
+      const fileType = (file.type || '').toLowerCase();
+      const fileName = (file.name || '').toLowerCase();
+      const isHeic = fileType.includes('heic') || fileType.includes('heif') || fileName.endsWith('.heic') || fileName.endsWith('.heif');
+
+      if (isHeic) {
+        if (typeof heic2any === 'undefined') {
+          reject(new Error('HEIC-Konverter nicht geladen. Bitte prüfe deine Internetverbindung.'));
+          return;
+        }
+
+        setPhotoStatusHtml(`
+          <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex items-center gap-2 text-slate-300">
+            <span class="inline-block w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+            <span>HEIC-Foto wird vorbereitet…</span>
+          </div>
+        `);
+
+        const conversionPromise = heic2any({ blob: file, toType: 'image/jpeg', quality: 0.7 });
+        const timeoutPromise = new Promise((_, rej) => 
+          setTimeout(() => rej(new Error('HEIC-Konvertierung hat zu lange gedauert. Speichere das Bild bitte als JPEG.')), 9000)
+        );
+        const converted = await Promise.race([conversionPromise, timeoutPromise]);
+        targetBlob = Array.isArray(converted) ? converted[0] : converted;
+      }
+
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('Bilddatei konnte nicht gelesen werden.'));
+      reader.onload = (ev) => {
+        const dataUrl = ev.target.result;
+        const img = new Image();
+        img.onerror = () => reject(new Error('Bildformat konnte vom Browser nicht dekodiert werden.'));
+        img.onload = () => {
+          let { width, height } = img;
+          if (width > maxDim || height > maxDim) {
+            if (width >= height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          const outMime = 'image/jpeg';
+          const compressedDataUrl = canvas.toDataURL(outMime, quality);
+          const base64Data = compressedDataUrl.split(',')[1];
+          
+          if (!base64Data) {
+            reject(new Error('Base64-Kodierung fehlgeschlagen.'));
+            return;
+          }
+
+          resolve({
+            previewUrl: dataUrl,
+            base64Data,
+            mimeType: outMime
+          });
+        };
+        img.src = dataUrl;
+      };
+      reader.readAsDataURL(targetBlob);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+async function handlePhotoFileSelected(e) {
+  const inputEl = e.target;
+  const file = inputEl.files && inputEl.files[0];
+  if (!file) return;
+  inputEl.value = '';
+
+  const previewCard = document.getElementById('photoPreviewCard');
+  const imgEl = document.getElementById('scannedImageEl');
+
+  const fileType = (file.type || '').toLowerCase();
+  if (!SUPPORTED_IMAGE_TYPES.includes(fileType)) {
+    previewCard.classList.remove('hidden');
+    imgEl.src = '';
+    currentScanImage = null;
+    state.draftItems = [];
+    renderDraftItems();
+    setPhotoStatusHtml(`
+      <div class="bg-rose-500/10 border border-rose-500/30 rounded-xl p-2.5 text-rose-300">
+        <strong>Nicht unterstütztes Format (${escapeHtml(fileType || 'unbekannt')}).</strong><br/>
+        Bitte nutze JPEG, PNG oder WebP.
+      </div>
+    `);
+    return;
+  }
+
+  try {
+    const encoded = await compressAndEncodeImage(file, 1024, 0.82);
+    currentScanImage = encoded;
+    imgEl.src = encoded.previewUrl;
+    previewCard.classList.remove('hidden');
+
+    const existingHint = getPhotoHint();
+    syncPhotoHint(existingHint);
+
+    // Run AI scan immediately
+    await runPhotoScanWithCurrentSettings();
+  } catch (err) {
+    previewCard.classList.remove('hidden');
+    imgEl.src = '';
+    currentScanImage = null;
+    setPhotoStatusHtml(`
+      <div class="bg-rose-500/10 border border-rose-500/30 rounded-xl p-2.5 text-rose-300">
+        <strong>Fehler beim Bildimport:</strong> ${escapeHtml(err.message)}
+      </div>
+    `);
+  }
+}
+
+// Multi-model fallback client to ensure zero 404 errors
+async function callGeminiVisionApi(apiKey, payload) {
+  const models = ['gemini-3.5-flash-lite'];
+  let lastErr = null;
+  for (const model of models) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (response.status === 404) {
+        continue;
+      }
+
+      const rawBody = await response.text();
+      if (!response.ok) {
+        let msg = `HTTP ${response.status}`;
+        try {
+          const errObj = JSON.parse(rawBody);
+          if (errObj?.error?.message) msg = errObj.error.message;
+        } catch (_) {}
+        throw new Error(msg);
+      }
+
+      return JSON.parse(rawBody);
+    } catch (e) {
+      lastErr = e;
+      if (e.message && !e.message.includes('404')) {
+        throw e;
+      }
+    }
+  }
+  throw lastErr || new Error('Kein kompatibles Gemini-Modell erreichbar.');
+}
+
+async function runPhotoScanWithCurrentSettings() {
+  if (!currentScanImage) {
+    showToast('Bitte wähle zuerst ein Foto aus');
+    return;
+  }
+
+  const apiKey = (localStorage.getItem('nutritracker_gemini_key') || '').trim();
+  if (!apiKey) {
+    setPhotoStatusHtml(`
+      <div class="bg-rose-500/10 border border-rose-500/30 rounded-xl p-2.5 space-y-1.5">
+        <div class="font-bold text-rose-300">Kein Gemini API-Key hinterlegt</div>
+        <p class="text-[11px] text-slate-300 leading-relaxed">
+          Bitte trage deinen Key im Tab <strong>Goals</strong> ein und klicke auf Save.
+        </p>
+        <button onclick="switchTab('goals')" class="bg-emerald-500 text-slate-950 font-bold text-[11px] px-2.5 py-1 rounded-lg">
+          Zum Goals-Tab →
+        </button>
+      </div>
+    `);
+    return;
+  }
+
+  const userHint = getPhotoHint();
+  const scanBtn = document.getElementById('triggerScanBtn');
+  const scanBtnLabel = document.getElementById('scanBtnLabel');
+  const scanSpinner = document.getElementById('scanSpinner');
+
+  if (scanBtn) scanBtn.disabled = true;
+  if (scanBtnLabel) scanBtnLabel.textContent = userHint ? 'Analysiere mit deinem Hinweis…' : 'Analysiere Foto mit KI…';
+  if (scanSpinner) scanSpinner.classList.remove('hidden');
+
+  setPhotoStatusHtml(`
+    <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex items-center gap-2 text-slate-300">
+      <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+      <span>${userHint ? `Foto & Hinweis ("${escapeHtml(userHint)}") werden analysiert…` : 'Foto wird mit Gemini Vision analysiert…'}</span>
+    </div>
+  `);
+
+  const validKeys = Object.keys(USDA_DB);
+  const dbCatalog = validKeys.map(k => `- "${k}": ${USDA_DB[k].name}`).join('\n');
+
+  const systemInstruction = `You are a culinary expert, chef, and registered dietitian assistant for NutriTracker.
+You inspect a meal photo alongside an optional user hint/note.
+
+GUIDELINES:
+1. Pay very close attention to the user note (if provided). It contains ground truth about ingredients, dish identity, or recipe specifics.
+2. If no food is visible, return an empty "dishes" array.
+3. For each detected dish or food:
+   - Identify if it is a pure standalone item exactly in this 13-item list:
+${dbCatalog}
+     If and only if it directly matches one of these simple single foods, set "isDatabaseMatch": true, and "matchedFoodKey" to that exact key.
+   - If it is a cooked meal, composite dish, recipe, or ANY food not in those 13 items:
+     Set "isDatabaseMatch": false and "matchedFoodKey": "CUSTOM_DISH".
+     You MUST estimate the individual ingredients that make up the dish in the "ingredients" array:
+       - name (e.g. "Rinderhackfleisch", "Spaghetti (gekocht)", "Tomatensauce", "Olivenöl")
+       - grams (realistic weight in grams)
+       - cal, pro, carbs, fat for this ingredient portion
+     You MUST estimate the overall dish portion weight in "estimatedTotalGrams".
+     You MUST estimate realistic average nutrition per 100g of the whole dish in "nutrientsPer100g":
+       cal, pro, carbs, fiber, fat, sat, mono, poly, sodium_mg, potassium_mg, magnesium_mg, calcium_mg, iron_mg, zinc_mg, phosphorus_mg, vit_a_mcg, vit_c_mg, vit_d_mcg, vit_e_mg, vit_k_mcg, vit_b1_mg, vit_b2_mg, vit_b3_mg, vit_b6_mg, vit_b9_mcg, vit_b12_mcg.
+4. Provide confidence (0.0 to 1.0). Keep estimates realistic and practical.`;
+
+  const responseSchema = {
+    type: 'OBJECT',
+    properties: {
+      dishes: {
+        type: 'ARRAY',
+        items: {
+          type: 'OBJECT',
+          properties: {
+            name: { type: 'STRING' },
+            estimatedTotalGrams: { type: 'NUMBER' },
+            confidence: { type: 'NUMBER' },
+            isDatabaseMatch: { type: 'BOOLEAN' },
+            matchedFoodKey: { type: 'STRING' },
+            ingredients: {
+              type: 'ARRAY',
+              items: {
+                type: 'OBJECT',
+                properties: {
+                  name: { type: 'STRING' },
+                  grams: { type: 'NUMBER' },
+                  cal: { type: 'NUMBER' },
+                  pro: { type: 'NUMBER' },
+                  carbs: { type: 'NUMBER' },
+                  fat: { type: 'NUMBER' }
+                },
+                required: ['name', 'grams', 'cal', 'pro', 'carbs', 'fat']
+              }
+            },
+            nutrientsPer100g: {
+              type: 'OBJECT',
+              properties: {
+                cal: { type: 'NUMBER' },
+                pro: { type: 'NUMBER' },
+                carbs: { type: 'NUMBER' },
+                fiber: { type: 'NUMBER' },
+                fat: { type: 'NUMBER' },
+                sat: { type: 'NUMBER' },
+                mono: { type: 'NUMBER' },
+                poly: { type: 'NUMBER' },
+                sodium_mg: { type: 'NUMBER' },
+                potassium_mg: { type: 'NUMBER' },
+                magnesium_mg: { type: 'NUMBER' },
+                calcium_mg: { type: 'NUMBER' },
+                iron_mg: { type: 'NUMBER' },
+                zinc_mg: { type: 'NUMBER' },
+                phosphorus_mg: { type: 'NUMBER' },
+                vit_a_mcg: { type: 'NUMBER' },
+                vit_c_mg: { type: 'NUMBER' },
+                vit_d_mcg: { type: 'NUMBER' },
+                vit_e_mg: { type: 'NUMBER' },
+                vit_k_mcg: { type: 'NUMBER' },
+                vit_b1_mg: { type: 'NUMBER' },
+                vit_b2_mg: { type: 'NUMBER' },
+                vit_b3_mg: { type: 'NUMBER' },
+                vit_b6_mg: { type: 'NUMBER' },
+                vit_b9_mcg: { type: 'NUMBER' },
+                vit_b12_mcg: { type: 'NUMBER' }
+              },
+              required: ['cal', 'pro', 'carbs', 'fiber', 'fat', 'sat']
+            }
+          },
+          required: ['name', 'estimatedTotalGrams', 'confidence', 'isDatabaseMatch', 'ingredients', 'nutrientsPer100g']
+        }
+      }
+    },
+    required: ['dishes']
+  };
+
+  const userPromptText = userHint
+    ? `Analyze this photo. User note/hint: "${userHint}". Identify the food/dishes, break down the ingredients, and estimate nutrition per instructions.`
+    : `Analyze this photo. Identify visible foods/dishes, break down individual ingredients, and calculate nutritional values per instructions.`;
+
+  try {
+    const rawResponse = await callGeminiVisionApi(apiKey, {
+      systemInstruction: { parts: [{ text: systemInstruction }] },
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            {
+              inlineData: {
+                mimeType: currentScanImage.mimeType,
+                data: currentScanImage.base64Data
+              }
+            },
+            { text: userPromptText }
+          ]
+        }
+      ],
+      generationConfig: {
+        temperature: 0.1,
+        responseMimeType: 'application/json',
+        responseSchema: responseSchema
+      }
+    });
+
+    const modelText = rawResponse?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!modelText) throw new Error('Leere Antwort vom Modell erhalten.');
+
+    const parsed = JSON.parse(modelText);
+    const dishes = Array.isArray(parsed?.dishes) ? parsed.dishes : [];
+
+    const reliable = dishes.filter(d => d && typeof d.name === 'string' && d.name.trim() !== '' && Number(d.confidence) >= 0.25);
+
+    if (reliable.length === 0) {
+      state.draftItems = [];
+      renderDraftItems();
+      setPhotoStatusHtml(`
+        <div class="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 text-amber-200">
+          Kein Essen zuverlässig erkannt. Bitte gib oben einen kurzen Hinweis zum Gericht ein und klicke erneut auf Analysieren.
+        </div>
+      `);
+      return;
+    }
+
+    const drafts = [];
+    reliable.forEach(d => {
+      const isDb = Boolean(d.isDatabaseMatch) && d.matchedFoodKey && USDA_DB[d.matchedFoodKey];
+      const gramsClamped = Math.max(10, Math.round((Number(d.estimatedTotalGrams) || 150) / 5) * 5);
+      
+      if (isDb) {
+        drafts.push({
+          foodKey: d.matchedFoodKey,
+          isCustom: false,
+          name: USDA_DB[d.matchedFoodKey].name,
+          grams: gramsClamped,
+          baseGrams: gramsClamped,
+          confidence: d.confidence,
+          ingredients: [],
+          nutrientsPer100g: null
+        });
+      } else {
+        const n100 = d.nutrientsPer100g || {};
+        const micros = {};
+        MICRO_META.forEach(m => {
+          micros[m.key] = Number(n100[m.key]) || 0;
+        });
+
+        const ingredients = (Array.isArray(d.ingredients) ? d.ingredients : []).map(ing => ({
+          name: String(ing.name || 'Zutat'),
+          grams: Math.max(1, Math.round(Number(ing.grams) || 0)),
+          cal: Math.round(Number(ing.cal) || 0),
+          pro: Number((Number(ing.pro) || 0).toFixed(1)),
+          carbs: Number((Number(ing.carbs) || 0).toFixed(1)),
+          fat: Number((Number(ing.fat) || 0).toFixed(1))
+        }));
+
+        drafts.push({
+          foodKey: null,
+          isCustom: true,
+          name: d.name.trim(),
+          grams: gramsClamped,
+          baseGrams: gramsClamped,
+          confidence: d.confidence,
+          ingredients: ingredients,
+          nutrientsPer100g: {
+            cal: Math.max(0, Number(n100.cal) || 0),
+            pro: Math.max(0, Number(n100.pro) || 0),
+            carbs: Math.max(0, Number(n100.carbs) || 0),
+            fiber: Math.max(0, Number(n100.fiber) || 0),
+            fat: Math.max(0, Number(n100.fat) || 0),
+            sat: Math.max(0, Number(n100.sat) || 0),
+            mono: Math.max(0, Number(n100.mono) || 0),
+            poly: Math.max(0, Number(n100.poly) || 0),
+            micros: micros
+          }
+        });
+      }
+    });
+
+    state.draftItems = drafts;
+    renderDraftItems();
+
+    let statusHtml = `
+      <div class="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-2.5 space-y-1.5">
+        <div class="font-bold text-emerald-300 text-[11px]">Gericht & Zutaten geschätzt (unten prüfen & loggen):</div>
+        <ul class="text-[11px] text-slate-200 space-y-1">
+          ${drafts.map(d => {
+            const confPct = Math.round(Math.min(1, Math.max(0, Number(d.confidence || 0.8))) * 100);
+            if (d.isCustom) {
+              const kcal = Math.round((d.nutrientsPer100g.cal * d.grams) / 100);
+              return `
+                <li>
+                  <div class="font-semibold text-white">• <strong>${escapeHtml(d.name)}</strong> (~${d.grams}g · ${kcal} kcal · ${confPct}% KI-Sicherheit)</div>
+                  ${d.ingredients.length > 0 ? `<div class="text-[10px] text-slate-400 pl-2">Zutaten: ${d.ingredients.map(i => `${escapeHtml(i.name)} (${i.grams}g)`).join(', ')}</div>` : ''}
+                </li>
+              `;
+            } else {
+              return `<li>• <strong>${escapeHtml(d.name)}</strong> (~${d.grams}g · DB-Match · ${confPct}%)</li>`;
+            }
+          }).join('')}
+        </ul>
+      </div>
+    `;
+    setPhotoStatusHtml(statusHtml);
+
+    if (scanBtnLabel) scanBtnLabel.textContent = 'Mit neuem Hinweis erneut analysieren';
+  } catch (err) {
+    state.draftItems = [];
+    renderDraftItems();
+    setPhotoStatusHtml(`
+      <div class="bg-rose-500/10 border border-rose-500/30 rounded-xl p-2.5 space-y-1">
+        <div class="font-bold text-rose-300">Bilderfassung fehlgeschlagen</div>
+        <p class="text-[11px] text-slate-300 leading-relaxed">${escapeHtml(err.message || 'Unbekannter API-Fehler')}</p>
+      </div>
+    `);
+    if (scanBtnLabel) scanBtnLabel.textContent = 'Erneut versuchen';
+  } finally {
+    if (scanBtn) scanBtn.disabled = false;
+    if (scanSpinner) scanSpinner.classList.add('hidden');
+  }
+}
+
+function closePhotoScan() {
+  document.getElementById('photoPreviewCard').classList.add('hidden');
+  document.getElementById('scannedImageEl').src = '';
+  currentScanImage = null;
+  const statusEl = document.getElementById('photoScanStatus');
+  if (statusEl) statusEl.innerHTML = '';
+}
+
+function runNlpParser() {
+  const raw = document.getElementById('nlpInput').value.toLowerCase().trim();
+  if (!raw) return;
+
+  const rules = [
+    { regex: /(\d+)\s*g?\s*(?:sirloin|steak)/, key: 'sirloin_steak', def: 180 },
+    { regex: /(?:sirloin|steak)/, key: 'sirloin_steak', def: 180 },
+    { regex: /(\d+)\s*g?\s*(?:ground beef|beef)/, key: 'ground_beef', def: 150 },
+    { regex: /(?:ground beef|beef)/, key: 'ground_beef', def: 150 },
+    { regex: /(\d+)\s*g?\s*(?:olive oil|oil)/, key: 'olive_oil', def: 10 },
+    { regex: /(?:olive oil|oil)/, key: 'olive_oil', def: 10 },
+    { regex: /(\d+)\s*g?\s*(?:basmati|rice)/, key: 'basmati_rice', def: 160 },
+    { regex: /(?:basmati|rice)/, key: 'basmati_rice', def: 160 },
+    { regex: /(\d+)\s*g?\s*(?:broccoli)/, key: 'broccoli_steamed', def: 120 },
+    { regex: /(?:broccoli)/, key: 'broccoli_steamed', def: 120 },
+    { regex: /(\d+)\s*g?\s*(?:yogurt)/, key: 'greek_yogurt', def: 200 },
+    { regex: /(?:yogurt)/, key: 'greek_yogurt', def: 200 },
+    { regex: /(\d+)\s*g?\s*(?:oats|oatmeal)/, key: 'rolled_oats', def: 80 },
+    { regex: /(?:oats|oatmeal)/, key: 'rolled_oats', def: 80 },
+    { regex: /(\d+)\s*g?\s*(?:pecan)/, key: 'pecans', def: 30 },
+    { regex: /(?:pecan)/, key: 'pecans', def: 30 },
+    { regex: /(\d+)\s*g?\s*(?:blueberr)/, key: 'blueberries', def: 100 },
+    { regex: /(?:blueberr)/, key: 'blueberries', def: 100 },
+    { regex: /(\d+)\s*g?\s*(?:banana)/, key: 'banana', def: 120 },
+    { regex: /(?:banana)/, key: 'banana', def: 120 },
+    { regex: /(\d+)\s*g?\s*(?:potato)/, key: 'baked_potato', def: 220 },
+    { regex: /(?:potato)/, key: 'baked_potato', def: 220 },
+    { regex: /(\d+)\s*g?\s*(?:spinach)/, key: 'spinach_sauteed', def: 120 },
+    { regex: /(?:spinach)/, key: 'spinach_sauteed', def: 120 },
+    { regex: /(\d+)\s*g?\s*(?:avocado)/, key: 'avocado', def: 80 },
+    { regex: /(?:avocado)/, key: 'avocado', def: 80 }
+  ];
+
+  const parsed = [];
+  const seen = new Set();
+  rules.forEach(r => {
+    if (seen.has(r.key)) return;
+    const match = raw.match(r.regex);
+    if (match) {
+      seen.add(r.key);
+      parsed.push({
+        foodKey: r.key,
+        isCustom: false,
+        name: USDA_DB[r.key].name,
+        grams: match[1] ? Number(match[1]) : r.def,
+        baseGrams: match[1] ? Number(match[1]) : r.def,
+        ingredients: [],
+        nutrientsPer100g: null
+      });
+    }
+  });
+
+  if (parsed.length === 0) {
+    showToast('No matching food found');
+    return;
+  }
+
+  state.draftItems = parsed;
+  renderDraftItems();
+}
+
+function renderDraftItems() {
+  const container = document.getElementById('draftContainer');
+  if (state.draftItems.length === 0) {
+    container.classList.add('hidden');
+    return;
+  }
+  container.classList.remove('hidden');
+
+  document.getElementById('draftItemsList').innerHTML = state.draftItems.map((item, idx) => {
+    const isCustom = Boolean(item.isCustom);
+    const f = isCustom ? item.nutrientsPer100g : USDA_DB[item.foodKey];
+    const name = isCustom ? item.name : (f ? f.name : 'Food');
+    const calPer100 = f ? f.cal : 0;
+    const kcal = Math.round((calPer100 * item.grams) / 100);
+    const maxG = Math.max(650, item.grams * 2);
+
+    let ingHtml = '';
+    if (isCustom && Array.isArray(item.ingredients) && item.ingredients.length > 0) {
+      const scale = item.grams / (item.baseGrams || item.grams || 1);
+      ingHtml = `
+        <div class="mt-1 text-[10px] text-slate-400 bg-slate-900/60 rounded-lg p-2 space-y-0.5">
+          <div class="font-semibold text-slate-300 mb-0.5">Geschätzte Zutaten:</div>
+          ${item.ingredients.map(ing => `
+            <div class="flex justify-between text-slate-300">
+              <span>• ${escapeHtml(ing.name)}</span>
+              <span class="text-slate-400 font-mono">${Math.round(ing.grams * scale)}g · ${Math.round(ing.cal * scale)} kcal</span>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    return `
+      <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 space-y-1.5">
+        <div class="flex justify-between items-center text-xs">
+          <div class="flex items-center gap-1.5">
+            <span class="font-bold text-white">${escapeHtml(name)}</span>
+            ${isCustom ? '<span class="text-[9px] font-bold text-indigo-300 bg-indigo-500/20 px-1.5 py-0.5 rounded">KI-Schätzung</span>' : ''}
+          </div>
+          <button onclick="removeDraftItem(${idx})" class="text-slate-500 hover:text-rose-400 text-xs px-1">✕</button>
+        </div>
+        ${ingHtml}
+        <div class="flex items-center gap-3 pt-1">
+          <input type="range" min="10" max="${maxG}" step="5" value="${item.grams}"
+            oninput="updateDraftGrams(${idx}, this.value)" class="flex-1" />
+          <span class="text-[11px] font-bold text-emerald-400 w-28 text-right">${item.grams}g · ${kcal} kcal</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function updateDraftGrams(idx, val) {
+  if (!state.draftItems[idx]) return;
+  state.draftItems[idx].grams = Number(val);
+  renderDraftItems();
+}
+
+function removeDraftItem(idx) {
+  state.draftItems.splice(idx, 1);
+  renderDraftItems();
+}
+
+function commitDraftItems() {
+  const meal = document.getElementById('mealTypeSelect').value;
+  state.draftItems.forEach(item => {
+    state.loggedItems.push({
+      id: Date.now() + Math.random(),
+      date: state.selectedDate,
+      createdAt: Date.now(),
+      meal,
+      foodKey: item.foodKey || null,
+      isCustom: Boolean(item.isCustom),
+      name: item.name || (item.foodKey ? USDA_DB[item.foodKey].name : 'Essen'),
+      grams: item.grams,
+      baseGrams: item.baseGrams || item.grams,
+      ingredients: item.ingredients || [],
+      nutrientsPer100g: item.nutrientsPer100g || null
+    });
+  });
+
+  state.draftItems = [];
+  document.getElementById('nlpInput').value = '';
+  closePhotoScan();
+  renderDraftItems();
+  saveState();
+  renderApp();
+  showToast(`Logged to ${state.selectedDate}`);
+  switchTab('today');
+}
+
+// =====================================================
+// 4B. INSIGHTS ENGINE
+// =====================================================
+function getInsightsDateList() {
+  const today = getLocalDateStr();
+  if (state.insights.mode === 'week') {
+    const monday = getMondayOfWeek(state.insights.anchorDate);
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(monday, i);
+      days.push({ date: d, isFuture: d > today });
+    }
+    return {
+      mode: 'week',
+      startDate: monday,
+      endDate: addDays(monday, 6),
+      label: formatShortRange(monday, addDays(monday, 6)),
+      canGoNext: addDays(monday, 7) <= today,
+      days
+    };
+  } else {
+    const d = parseLocalDate(state.insights.anchorDate);
+    const year = d.getFullYear();
+    const month = d.getMonth();
+    const totalDays = getDaysInMonth(year, month);
+    const days = [];
+    for (let dayNum = 1; dayNum <= totalDays; dayNum++) {
+      const ds = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+      days.push({ date: ds, isFuture: ds > today });
+    }
+    const nextMonthStart = new Date(year, month + 1, 1, 12, 0, 0);
+    return {
+      mode: 'month',
+      startDate: days[0].date,
+      endDate: days[days.length - 1].date,
+      label: d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+      canGoNext: getLocalDateStr(nextMonthStart) <= today,
+      days
+    };
+  }
+}
+
+function aggregatePeriodStats(periodInfo) {
+  const validDays = periodInfo.days.filter(d => !d.isFuture);
+  const dailyRecords = validDays.map(d => {
+    const nut = computeTotalsForDate(d.date);
+    const sleep = getSleepForDate(d.date);
+    return { date: d.date, nut, sleep };
+  });
+
+  const trackedNutDays = dailyRecords.filter(r => r.nut.isTracked);
+  const trackedSleepDays = dailyRecords.filter(r => r.sleep && r.sleep.durationMinutes > 0);
+
+  const avg = (arr, fn) => arr.length ? arr.reduce((s, x) => s + fn(x), 0) / arr.length : null;
+
+  const avgCal = avg(trackedNutDays, r => r.nut.cal);
+  const avgPro = avg(trackedNutDays, r => r.nut.pro);
+  const avgCarbs = avg(trackedNutDays, r => r.nut.carbs);
+  const avgNetCarbs = avg(trackedNutDays, r => r.nut.netCarbs);
+  const avgFiber = avg(trackedNutDays, r => r.nut.fiber);
+  const avgFat = avg(trackedNutDays, r => r.nut.fat);
+  const avgSat = avg(trackedNutDays, r => r.nut.sat);
+  const avgMicroCov = avg(trackedNutDays, r => r.nut.microCoveragePct);
+  const avgMicroHits = avg(trackedNutDays, r => r.nut.microHitCount);
+
+  const proGoalHitDays = trackedNutDays.filter(r => r.nut.pro >= state.targets.pro * 0.95).length;
+  const calNearGoalDays = trackedNutDays.filter(r => Math.abs(r.nut.cal - state.targets.cal) <= state.targets.cal * 0.12).length;
+
+  const microBreakdown = MICRO_META.map(m => {
+    const goal = state.targets.micros[m.key] || 1;
+    const meanVal = avg(trackedNutDays, r => r.nut.micros[m.key] || 0);
+    const pct = meanVal !== null ? Math.round((meanVal / goal) * 100) : null;
+    return { ...m, meanVal, goal, pct };
+  });
+
+  const avgSleepMin = avg(trackedSleepDays, r => r.sleep.durationMinutes);
+  let sleepRegularityLabel = 'Need 3+ logs';
+  let bedTimeSpreadMin = null;
+  if (trackedSleepDays.length >= 3) {
+    const bedMinutes = trackedSleepDays.map(r => {
+      const [h, m] = r.sleep.bedTime.split(':').map(Number);
+      let mins = h * 60 + m;
+      if (mins < 720) mins += 1440;
+      return mins;
+    });
+    bedTimeSpreadMin = Math.max(...bedMinutes) - Math.min(...bedMinutes);
+    sleepRegularityLabel = bedTimeSpreadMin <= 45 ? 'Consistent' : bedTimeSpreadMin <= 90 ? 'Moderate shift' : 'Irregular';
+  }
+
+  return {
+    periodInfo,
+    elapsedDaysCount: validDays.length,
+    totalCalendarDays: periodInfo.days.length,
+    dailyRecords,
+    trackedNutCount: trackedNutDays.length,
+    trackedSleepCount: trackedSleepDays.length,
+    avgCal, avgPro, avgCarbs, avgNetCarbs, avgFiber, avgFat, avgSat,
+    avgMicroCov, avgMicroHits,
+    proGoalHitDays, calNearGoalDays,
+    microBreakdown,
+    avgSleepMin,
+    sleepRegularityLabel,
+    bedTimeSpreadMin
+  };
+}
+
+function setInsightsMode(mode) {
+  state.insights.mode = mode;
+  state.insights.aiResult = null;
+  state.insights.aiError = null;
+  document.getElementById('ins-mode-week').className = mode === 'week'
+    ? 'bg-emerald-500 text-slate-950 font-bold text-xs py-1 rounded-lg'
+    : 'text-slate-400 font-semibold text-xs py-1 rounded-lg';
+  document.getElementById('ins-mode-month').className = mode === 'month'
+    ? 'bg-emerald-500 text-slate-950 font-bold text-xs py-1 rounded-lg'
+    : 'text-slate-400 font-semibold text-xs py-1 rounded-lg';
+  renderInsightsTab();
+}
+
+function shiftInsightsPeriod(dir) {
+  const info = getInsightsDateList();
+  if (dir > 0 && !info.canGoNext) return;
+  if (state.insights.mode === 'week') {
+    state.insights.anchorDate = addDays(state.insights.anchorDate, dir * 7);
+  } else {
+    const d = parseLocalDate(state.insights.anchorDate);
+    d.setMonth(d.getMonth() + dir);
+    state.insights.anchorDate = getLocalDateStr(d);
+  }
+  state.insights.aiResult = null;
+  state.insights.aiError = null;
+  renderInsightsTab();
+}
+
+function inspectDayFromInsights(dateStr) {
+  selectDate(dateStr);
+  switchTab('today');
+}
+
+function renderInsightsTab() {
+  const periodInfo = getInsightsDateList();
+  const stats = aggregatePeriodStats(periodInfo);
+  const t = state.targets;
+
+  document.getElementById('insightsRangeLabel').textContent = periodInfo.label;
+  document.getElementById('insightsCoverageBadge').textContent =
+    `${stats.trackedNutCount} of ${stats.elapsedDaysCount} days tracked`;
+
+  const nextBtn = document.getElementById('insightsNextBtn');
+  nextBtn.disabled = !periodInfo.canGoNext;
+  nextBtn.className = periodInfo.canGoNext
+    ? 'text-slate-300 hover:text-white bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-xs font-bold'
+    : 'text-slate-700 bg-slate-950/50 border border-slate-800/40 rounded-lg px-2.5 py-1 text-xs font-bold cursor-not-allowed';
+
+  const calDelta = stats.avgCal !== null ? Math.round(stats.avgCal - t.cal) : null;
+  const calSub = stats.avgCal !== null
+    ? `${calDelta >= 0 ? '+' : ''}${calDelta} vs ${t.cal} target`
+    : 'No logged food days';
+  const calPct = stats.avgCal !== null ? Math.min(100, Math.round((stats.avgCal / t.cal) * 100)) : 0;
+
+  const proSub = stats.avgPro !== null
+    ? `Goal hit ${stats.proGoalHitDays}/${stats.trackedNutCount} tracked days`
+    : 'No logged food days';
+  const proPct = stats.avgPro !== null ? Math.min(100, Math.round((stats.avgPro / t.pro) * 100)) : 0;
+
+  const microSub = stats.avgMicroCov !== null
+    ? `${stats.avgMicroHits.toFixed(1)}/18 avg targets (est.)`
+    : 'Nutrition DB estimate';
+  const microPct = stats.avgMicroCov !== null ? stats.avgMicroCov : 0;
+
+  const sleepSub = stats.avgSleepMin !== null
+    ? `${stats.trackedSleepCount} nights · ${stats.sleepRegularityLabel}`
+    : 'No sleep logged yet';
+  const sleepPct = stats.avgSleepMin !== null ? Math.min(100, Math.round((stats.avgSleepMin / t.sleepMinutes) * 100)) : 0;
+
+  document.getElementById('insightsKpiGrid').innerHTML = `
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3 space-y-1.5">
+      <span class="text-[10px] uppercase font-bold tracking-wider text-slate-400">Average Calories</span>
+      <div class="text-base font-extrabold text-white">${stats.avgCal !== null ? `${Math.round(stats.avgCal)} kcal` : '—'}</div>
+      <div class="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden">
+        <div class="h-full bg-emerald-400" style="width:${calPct}%"></div>
+      </div>
+      <div class="text-[10px] text-slate-400">${calSub}</div>
+    </div>
+
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3 space-y-1.5">
+      <span class="text-[10px] uppercase font-bold tracking-wider text-slate-400">Protein</span>
+      <div class="text-base font-extrabold text-white">${stats.avgPro !== null ? `${Math.round(stats.avgPro)}g / day` : '—'}</div>
+      <div class="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden">
+        <div class="h-full bg-sky-400" style="width:${proPct}%"></div>
+      </div>
+      <div class="text-[10px] text-slate-400">${proSub}</div>
+    </div>
+
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3 space-y-1.5">
+      <span class="text-[10px] uppercase font-bold tracking-wider text-slate-400">Micronutrients</span>
+      <div class="text-base font-extrabold text-white">${stats.avgMicroCov !== null ? `${stats.avgMicroCov}% cov.` : '—'}</div>
+      <div class="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden">
+        <div class="h-full bg-emerald-400" style="width:${microPct}%"></div>
+      </div>
+      <div class="text-[10px] text-slate-400">${microSub}</div>
+    </div>
+
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3 space-y-1.5">
+      <span class="text-[10px] uppercase font-bold tracking-wider text-slate-400">Average Sleep</span>
+      <div class="text-base font-extrabold text-white">${stats.avgSleepMin !== null ? formatDurationMinutes(Math.round(stats.avgSleepMin)) : '—'}</div>
+      <div class="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden">
+        <div class="h-full bg-indigo-400" style="width:${sleepPct}%"></div>
+      </div>
+      <div class="text-[10px] text-slate-400">${sleepSub}</div>
+    </div>
+  `;
+
+  const trendsEl = document.getElementById('insightsTrendsContainer');
+  if (periodInfo.mode === 'week') {
+    document.getElementById('trendsSubtitle').textContent = 'Tap any day to open Day View';
+    const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    trendsEl.innerHTML = periodInfo.days.map((dObj, idx) => {
+      const nut = computeTotalsForDate(dObj.date);
+      const sleep = getSleepForDate(dObj.date);
+      if (dObj.isFuture) {
+        return `
+          <div class="flex items-center justify-between text-[11px] py-1 px-2 rounded-lg opacity-40">
+            <span class="w-10 font-semibold text-slate-500">${dayNames[idx]}</span>
+            <span class="text-slate-600 flex-1 text-center">Upcoming</span>
+            <span class="w-16 text-right text-slate-600">—</span>
+          </div>`;
+      }
+      const calPctBar = nut.isTracked ? Math.min(100, Math.round((nut.cal / t.cal) * 100)) : 0;
+      const calColor = nut.isTracked ? getStatusColor(nut.cal, t.cal, true).bgClass : 'bg-slate-800';
+      const sleepText = sleep ? formatDurationMinutes(sleep.durationMinutes) : 'No sleep';
+      return `
+        <button onclick="inspectDayFromInsights('${dObj.date}')" class="w-full text-left bg-slate-950 hover:bg-slate-950/70 border border-slate-800/80 rounded-xl p-2.5 transition space-y-1.5">
+          <div class="flex items-center justify-between text-[11px]">
+            <span class="font-bold text-white">${dayNames[idx]} <span class="text-slate-500 font-normal">${dObj.date.slice(8)}</span></span>
+            <div class="flex items-center gap-2.5">
+              <span class="${nut.isTracked ? 'text-slate-200 font-semibold' : 'text-slate-500 italic'}">
+                ${nut.isTracked ? `${Math.round(nut.cal)} / ${t.cal} kcal` : 'Not tracked'}
+              </span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-900 ${sleep ? 'text-indigo-300 font-semibold' : 'text-slate-500'}">
+                ${sleepText}
+              </span>
+            </div>
+          </div>
+          <div class="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden">
+            <div class="h-full ${calColor}" style="width:${calPctBar}%"></div>
+          </div>
+        </button>
+      `;
+    }).join('');
+  } else {
+    document.getElementById('trendsSubtitle').textContent = 'Grouped by weeks of month';
+    const buckets = [];
+    for (let i = 0; i < periodInfo.days.length; i += 7) {
+      const slice = periodInfo.days.slice(i, i + 7);
+      const validSlice = slice.filter(x => !x.isFuture);
+      const nutDays = validSlice.map(x => computeTotalsForDate(x.date)).filter(n => n.isTracked);
+      const sleepDays = validSlice.map(x => getSleepForDate(x.date)).filter(Boolean);
+      const avgWCal = nutDays.length ? Math.round(nutDays.reduce((s, n) => s + n.cal, 0) / nutDays.length) : null;
+      const avgWPro = nutDays.length ? Math.round(nutDays.reduce((s, n) => s + n.pro, 0) / nutDays.length) : null;
+      const avgWSleep = sleepDays.length ? Math.round(sleepDays.reduce((s, sl) => s + sl.durationMinutes, 0) / sleepDays.length) : null;
+      buckets.push({
+        label: `W${Math.floor(i / 7) + 1} (${slice[0].date.slice(8)}–${slice[slice.length - 1].date.slice(8)})`,
+        trackedCount: nutDays.length,
+        totalDays: validSlice.length,
+        avgWCal, avgWPro, avgWSleep
+      });
+    }
+    trendsEl.innerHTML = buckets.map(b => {
+      const pct = b.avgWCal !== null ? Math.min(100, Math.round((b.avgWCal / t.cal) * 100)) : 0;
+      return `
+        <div class="bg-slate-950 border border-slate-800/80 rounded-xl p-2.5 space-y-1.5">
+          <div class="flex items-center justify-between text-[11px]">
+            <span class="font-bold text-white">${b.label} <span class="text-[10px] text-slate-500 font-normal">(${b.trackedCount}/${b.totalDays}d)</span></span>
+            <span class="text-slate-300 font-semibold">
+              ${b.avgWCal !== null ? `${b.avgWCal} kcal · ${b.avgWPro}g P` : 'No nutrition logs'}
+            </span>
+          </div>
+          <div class="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden">
+            <div class="h-full bg-emerald-400" style="width:${pct}%"></div>
+          </div>
+          <div class="flex justify-between text-[10px] text-slate-400">
+            <span>Target: ${t.cal} kcal</span>
+            <span>Avg Sleep: <strong class="text-indigo-300">${b.avgWSleep !== null ? formatDurationMinutes(b.avgWSleep) : '—'}</strong></span>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  const lowMicros = stats.microBreakdown.filter(m => !m.isCap && m.pct !== null && m.pct < 75).slice(0, 5);
+  const topMicros = stats.microBreakdown.filter(m => !m.isCap && m.pct !== null && m.pct >= 90).slice(0, 5);
+
+  document.getElementById('insightsAccordions').innerHTML = `
+    <details class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 group">
+      <summary class="text-xs font-bold text-slate-200 cursor-pointer list-none flex justify-between items-center">
+        <span>Calorie and Macronutrient Details</span>
+        <span class="text-slate-500 group-open:rotate-180 transition-transform">▼</span>
+      </summary>
+      <div class="mt-2.5 pt-2.5 border-t border-slate-800 grid grid-cols-2 gap-2 text-[11px]">
+        <div class="bg-slate-950 p-2 rounded-lg"><span class="text-slate-400 block text-[10px]">Avg Total / Net Carbs</span><strong class="text-white">${stats.avgCarbs !== null ? `${Math.round(stats.avgCarbs)}g / ${Math.round(stats.avgNetCarbs)}g` : '—'}</strong></div>
+        <div class="bg-slate-950 p-2 rounded-lg"><span class="text-slate-400 block text-[10px]">Avg Dietary Fiber</span><strong class="text-white">${stats.avgFiber !== null ? `${stats.avgFiber.toFixed(1)}g / ${t.fiber}g` : '—'}</strong></div>
+        <div class="bg-slate-950 p-2 rounded-lg"><span class="text-slate-400 block text-[10px]">Avg Total Fat</span><strong class="text-white">${stats.avgFat !== null ? `${Math.round(stats.avgFat)}g / ${t.fat}g` : '—'}</strong></div>
+        <div class="bg-slate-950 p-2 rounded-lg"><span class="text-slate-400 block text-[10px]">Avg Saturated Fat</span><strong class="text-white">${stats.avgSat !== null ? `${stats.avgSat.toFixed(1)}g (Cap ${t.satCap}g)` : '—'}</strong></div>
+      </div>
+    </details>
+
+    <details class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 group">
+      <summary class="text-xs font-bold text-slate-200 cursor-pointer list-none flex justify-between items-center">
+        <span>Micronutrient Overview</span>
+        <span class="text-slate-500 group-open:rotate-180 transition-transform">▼</span>
+      </summary>
+      <div class="mt-2.5 pt-2.5 border-t border-slate-800 space-y-2 text-[11px]">
+        <p class="text-[10px] text-slate-400">Derived from FoodData Central profiles and comprehensive AI estimations.</p>
+        ${stats.trackedNutCount === 0 ? '<p class="text-slate-500">Log meals to view micronutrient coverage.</p>' : `
+          <div>
+            <span class="text-[10px] uppercase font-bold text-emerald-400">Consistently Met (≥90%)</span>
+            <p class="text-slate-300 mt-0.5">${topMicros.length ? topMicros.map(m => `${m.label} (${m.pct}%)`).join(', ') : 'None ≥90% yet'}</p>
+          </div>
+          <div>
+            <span class="text-[10px] uppercase font-bold text-amber-400">Below 75% Target</span>
+            <p class="text-slate-300 mt-0.5">${lowMicros.length ? lowMicros.map(m => `${m.label} (${m.pct}%)`).join(', ') : 'All tracked micronutrients ≥75%'}</p>
+          </div>
+        `}
+      </div>
+    </details>
+
+    <details class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 group">
+      <summary class="text-xs font-bold text-slate-200 cursor-pointer list-none flex justify-between items-center">
+        <span>Sleep Details</span>
+        <span class="text-slate-500 group-open:rotate-180 transition-transform">▼</span>
+      </summary>
+      <div class="mt-2.5 pt-2.5 border-t border-slate-800 grid grid-cols-2 gap-2 text-[11px]">
+        <div class="bg-slate-950 p-2 rounded-lg"><span class="text-slate-400 block text-[10px]">Logged Nights</span><strong class="text-white">${stats.trackedSleepCount} of ${stats.elapsedDaysCount}</strong></div>
+        <div class="bg-slate-950 p-2 rounded-lg"><span class="text-slate-400 block text-[10px]">Bedtime Regularity</span><strong class="text-white">${stats.sleepRegularityLabel}${stats.bedTimeSpreadMin !== null ? ` (±${Math.round(stats.bedTimeSpreadMin/2)}m)` : ''}</strong></div>
+      </div>
+    </details>
+
+    <details class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 group">
+      <summary class="text-xs font-bold text-slate-200 cursor-pointer list-none flex justify-between items-center">
+        <span>Tracking Consistency</span>
+        <span class="text-slate-500 group-open:rotate-180 transition-transform">▼</span>
+      </summary>
+      <div class="mt-2.5 pt-2.5 border-t border-slate-800 grid grid-cols-2 gap-2 text-[11px]">
+        <div class="bg-slate-950 p-2 rounded-lg"><span class="text-slate-400 block text-[10px]">Nutrition Coverage</span><strong class="text-white">${stats.trackedNutCount}/${stats.elapsedDaysCount} days (${stats.elapsedDaysCount ? Math.round((stats.trackedNutCount/stats.elapsedDaysCount)*100) : 0}%)</strong></div>
+        <div class="bg-slate-950 p-2 rounded-lg"><span class="text-slate-400 block text-[10px]">Calories Within ±12%</span><strong class="text-white">${stats.calNearGoalDays}/${stats.trackedNutCount || 0} tracked days</strong></div>
+      </div>
+    </details>
+  `;
+
+  const consentBox = document.getElementById('aiConsentBox');
+  const consentChk = document.getElementById('aiConsentCheckbox');
+  if (consentChk) consentChk.checked = state.aiConsentGiven;
+  if (consentBox) consentBox.classList.toggle('hidden', state.aiConsentGiven);
+
+  renderAiReviewState();
+}
+
+// =====================================================
+// 4C. SLEEP TRACKING ENGINE
+// =====================================================
+function calculateSleepDurationMinutes(bedTimeStr, wakeTimeStr) {
+  if (!/^\d{2}:\d{2}$/.test(bedTimeStr) || !/^\d{2}:\d{2}$/.test(wakeTimeStr)) return null;
+  const [bH, bM] = bedTimeStr.split(':').map(Number);
+  const [wH, wM] = wakeTimeStr.split(':').map(Number);
+  const bedMins = bH * 60 + bM;
+  let wakeMins = wH * 60 + wM;
+  if (wakeMins <= bedMins) {
+    wakeMins += 1440;
+  }
+  const duration = wakeMins - bedMins;
+  if (duration < 30 || duration > 1080) return null;
+  return duration;
+}
+
+function formatDurationMinutes(totalMins) {
+  if (!totalMins || totalMins <= 0) return '0h 0m';
+  const h = Math.floor(totalMins / 60);
+  const m = totalMins % 60;
+  return `${h}h ${String(m).padStart(2, '0')}m`;
+}
+
+function renderSleepCard() {
+  const entry = getSleepForDate(state.selectedDate);
+  const summaryEl = document.getElementById('sleepCardSummary');
+  if (!summaryEl) return;
+
+  if (!entry) {
+    summaryEl.innerHTML = `
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400">Sleep</h2>
+          <p class="text-xs text-slate-400 mt-0.5">No sleep logged for ${state.selectedDate}</p>
+        </div>
+        <button onclick="openSleepModal()" class="bg-slate-950 hover:bg-slate-800 border border-slate-800 text-emerald-400 font-bold text-xs px-3 py-1.5 rounded-xl">
+          + Log Sleep
+        </button>
+      </div>
+    `;
+  } else {
+    summaryEl.innerHTML = `
+      <div class="flex items-center justify-between">
+        <div>
+          <div class="flex items-center gap-2">
+            <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400">Sleep</h2>
+            <span class="text-[10px] font-semibold text-indigo-300 bg-indigo-500/10 px-2 py-0.5 rounded">${entry.bedTime} → ${entry.wakeTime}</span>
+          </div>
+          <div class="text-sm font-extrabold text-white mt-1">${formatDurationMinutes(entry.durationMinutes)}</div>
+        </div>
+        <button onclick="openSleepModal()" class="bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 font-semibold text-xs px-3 py-1.5 rounded-xl">
+          Edit
+        </button>
+      </div>
+    `;
+  }
+}
+
+function openSleepModal() {
+  const existing = getSleepForDate(state.selectedDate);
+  document.getElementById('sleepBedTimeInput').value = existing ? existing.bedTime : '23:15';
+  document.getElementById('sleepWakeTimeInput').value = existing ? existing.wakeTime : '07:05';
+  document.getElementById('deleteSleepBtn').classList.toggle('hidden', !existing);
+  document.getElementById('sleepErrorText').classList.add('hidden');
+  document.getElementById('sleepFormDrawer').classList.remove('hidden');
+  previewSleepDuration();
+}
+
+function closeSleepModal() {
+  document.getElementById('sleepFormDrawer').classList.add('hidden');
+}
+
+function previewSleepDuration() {
+  const bed = document.getElementById('sleepBedTimeInput').value;
+  const wake = document.getElementById('sleepWakeTimeInput').value;
+  const mins = calculateSleepDurationMinutes(bed, wake);
+  const previewEl = document.getElementById('sleepPreviewText');
+  const errEl = document.getElementById('sleepErrorText');
+
+  if (mins === null) {
+    previewEl.textContent = 'Duration: —';
+    errEl.textContent = 'Enter a valid range (30m – 18h)';
+    errEl.classList.remove('hidden');
+  } else {
+    previewEl.textContent = `Calculated: ${formatDurationMinutes(mins)}`;
+    errEl.classList.add('hidden');
+  }
+}
+
+function saveSleepEntry() {
+  const wakeDate = state.selectedDate;
+  const bedTime = document.getElementById('sleepBedTimeInput').value;
+  const wakeTime = document.getElementById('sleepWakeTimeInput').value;
+  const errEl = document.getElementById('sleepErrorText');
+
+  const durationMinutes = calculateSleepDurationMinutes(bedTime, wakeTime);
+  if (durationMinutes === null) {
+    errEl.textContent = 'Invalid time span (must be 30m to 18h)';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  const existingIdx = state.sleepLogs.findIndex(s => s.date === wakeDate);
+  const record = {
+    id: existingIdx >= 0 ? state.sleepLogs[existingIdx].id : Date.now(),
+    date: wakeDate,
+    bedTime,
+    wakeTime,
+    durationMinutes,
+    updatedAt: Date.now()
+  };
+
+  if (existingIdx >= 0) state.sleepLogs[existingIdx] = record;
+  else state.sleepLogs.push(record);
+
+  saveState();
+  closeSleepModal();
+  renderApp();
+  showToast('Sleep saved');
+}
+
+function deleteSleepEntry() {
+  const wakeDate = state.selectedDate;
+  state.sleepLogs = state.sleepLogs.filter(s => s.date !== wakeDate);
+  saveState();
+  closeSleepModal();
+  renderApp();
+  showToast('Sleep entry deleted');
+}
+
+// =====================================================
+// 4D. DATE SELECTION
+// =====================================================
+function shiftSelectedDate(deltaDays) {
+  const today = getLocalDateStr();
+  const target = addDays(state.selectedDate, deltaDays);
+  if (target > today) return;
+  selectDate(target);
+}
+
+function selectDate(dateStr) {
+  const today = getLocalDateStr();
+  state.selectedDate = dateStr > today ? today : dateStr;
+  closeSleepModal();
+  saveState();
+  renderApp();
+}
+
+// =====================================================
+// 6. GOALS & SETTINGS
+// =====================================================
+function recalculateTargets() {
+  const sex = document.getElementById('bioSex').value;
+  const age = Number(document.getElementById('bioAge').value) || 18;
+  const height = Number(document.getElementById('bioHeight').value) || 178;
+  const weight = Number(document.getElementById('bioWeight').value) || 78.5;
+  const activity = Number(document.getElementById('bioActivity').value) || 1.55;
+  const goalDelta = Number(document.getElementById('bioGoal').value) || 0;
+
+  state.profile = { sex, age, height, weight, activity, goalDelta };
+
+  const s = sex === 'male' ? 5 : -161;
+  const bmr = Math.round((10 * weight) + (6.25 * height) - (5 * age) + s);
+  const tdee = Math.round(bmr * activity);
+  const targetCal = Math.max(1400, tdee + goalDelta);
+
+  const pro = Math.round(weight * 2.1);
+  const fat = Math.round((targetCal * 0.27) / 9);
+  const carbs = Math.max(80, Math.round((targetCal - (pro * 4) - (fat * 9)) / 4));
+  const fiber = sex === 'male' ? 38 : 26;
+
+  state.targets.cal = targetCal;
+  state.targets.pro = pro;
+  state.targets.fat = fat;
+  state.targets.carbs = carbs;
+  state.targets.fiber = fiber;
+  state.targets.netCarbs = Math.max(50, carbs - fiber);
+  state.targets.satCap = Math.round((targetCal * 0.08) / 9);
+
+  document.getElementById('bioSummaryBox').innerHTML = `
+    <div class="bg-slate-900 p-2.5 rounded-lg"><span class="text-slate-400 block text-[10px]">BMR</span><strong class="text-white">${bmr} kcal</strong></div>
+    <div class="bg-slate-900 p-2.5 rounded-lg"><span class="text-slate-400 block text-[10px]">Target</span><strong class="text-emerald-400">${targetCal} kcal</strong></div>
+    <div class="bg-slate-900 p-2.5 rounded-lg"><span class="text-slate-400 block text-[10px]">Protein</span><strong class="text-white">${pro}g</strong></div>
+    <div class="bg-slate-900 p-2.5 rounded-lg"><span class="text-slate-400 block text-[10px]">Net Carbs / Fat</span><strong class="text-white">${state.targets.netCarbs}g / ${fat}g</strong></div>
+  `;
+
+  saveState();
+  renderApp();
+}
+
+function updateLoggedGrams(id, val) {
+  const item = state.loggedItems.find(i => i.id === id);
+  if (item) {
+    item.grams = Number(val);
+    saveState();
+    renderApp();
+  }
+}
+
+function removeLoggedItem(id) {
+  state.loggedItems = state.loggedItems.filter(i => i.id !== id);
+  saveState();
+  renderApp();
+}
+
+function clearAllMeals() {
+  const count = getItemsForDate(state.selectedDate).length;
+  if (count === 0) return;
+  if (!window.confirm(`Delete all ${count} food entries for ${state.selectedDate}?`)) return;
+  state.loggedItems = state.loggedItems.filter(item => item.date !== state.selectedDate);
+  saveState();
+  renderApp();
+  showToast(`Cleared ${state.selectedDate}`);
+}
+
+function toggleSubMacros() {
+  state.subMacrosOpen = !state.subMacrosOpen;
+  document.getElementById('subMacroDrawer').classList.toggle('hidden', !state.subMacrosOpen);
+  document.getElementById('subMacroChevron').style.transform = state.subMacrosOpen ? 'rotate(180deg)' : 'rotate(0deg)';
+}
+
+function setMicroFilter(filter) {
+  state.microFilter = filter;
+  ['all', 'mineral', 'vitamin', 'low'].forEach(k => {
+    const btn = document.getElementById(`filter-${k}`);
+    btn.className = k === filter
+      ? 'bg-emerald-500 text-slate-950 font-bold text-xs py-1.5 rounded-lg'
+      : 'text-slate-400 font-semibold text-xs py-1.5 rounded-lg';
+  });
+  renderApp();
+}
+
+function switchTab(tab) {
+  state.activeTab = tab;
+  ['today', 'insights', 'add', 'micros', 'goals'].forEach(t => {
+    const sec = document.getElementById(`tab-${t}`);
+    if (sec) sec.classList.toggle('hidden', t !== tab);
+    const navBtn = document.getElementById(`nav-${t}`);
+    if (navBtn) {
+      navBtn.className = t === tab
+        ? 'flex flex-col items-center justify-center py-1 rounded-xl text-emerald-400'
+        : 'flex flex-col items-center justify-center py-1 rounded-xl text-slate-400';
+    }
+  });
+  if (tab === 'insights') renderInsightsTab();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function showToast(msg) {
+  const banner = document.getElementById('toastBanner');
+  banner.textContent = msg;
+  banner.classList.remove('hidden');
+  setTimeout(() => banner.classList.add('hidden'), 1600);
+}
+
+// =====================================================
+// 7. AI REVIEW CLIENT
+// =====================================================
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function toggleAiConsent(checked) {
+  state.aiConsentGiven = Boolean(checked);
+  saveState();
+}
+
+function buildAiPayload() {
+  const periodInfo = getInsightsDateList();
+  const currentStats = aggregatePeriodStats(periodInfo);
+
+  const prevShift = periodInfo.mode === 'week' ? -7 : -30;
+  const prevAnchor = addDays(state.insights.anchorDate, prevShift);
+  const savedAnchor = state.insights.anchorDate;
+  state.insights.anchorDate = prevAnchor;
+  const prevStats = aggregatePeriodStats(getInsightsDateList());
+  state.insights.anchorDate = savedAnchor;
+
+  return {
+    periodType: periodInfo.mode,
+    periodLabel: periodInfo.label,
+    elapsedDays: currentStats.elapsedDaysCount,
+    nutritionTrackedDays: currentStats.trackedNutCount,
+    sleepTrackedDays: currentStats.trackedSleepCount,
+    targets: {
+      calories: state.targets.cal,
+      proteinG: state.targets.pro,
+      fiberG: state.targets.fiber,
+      fatG: state.targets.fat,
+      satFatCapG: state.targets.satCap,
+      sleepMinutes: state.targets.sleepMinutes
+    },
+    averages: {
+      calories: currentStats.avgCal !== null ? Math.round(currentStats.avgCal) : null,
+      proteinG: currentStats.avgPro !== null ? Math.round(currentStats.avgPro) : null,
+      netCarbsG: currentStats.avgNetCarbs !== null ? Math.round(currentStats.avgNetCarbs) : null,
+      fiberG: currentStats.avgFiber !== null ? Number(currentStats.avgFiber.toFixed(1)) : null,
+      fatG: currentStats.avgFat !== null ? Math.round(currentStats.avgFat) : null,
+      satFatG: currentStats.avgSat !== null ? Number(currentStats.avgSat.toFixed(1)) : null,
+      microCoveragePct: currentStats.avgMicroCov,
+      sleepMinutes: currentStats.avgSleepMin !== null ? Math.round(currentStats.avgSleepMin) : null
+    },
+    consistency: {
+      proteinGoalHitDays: currentStats.proGoalHitDays,
+      caloriesNearGoalDays: currentStats.calNearGoalDays,
+      sleepRegularity: currentStats.sleepRegularityLabel,
+      bedTimeSpreadMinutes: currentStats.bedTimeSpreadMin
+    },
+    micronutrientsEstimated: {
+      consistentlyMet: currentStats.microBreakdown.filter(m => !m.isCap && m.pct !== null && m.pct >= 90).map(m => ({ name: m.label, pct: m.pct })),
+      frequentlyLow: currentStats.microBreakdown.filter(m => !m.isCap && m.pct !== null && m.pct < 75).map(m => ({ name: m.label, pct: m.pct })),
+      sodiumAvgPctOfCap: currentStats.microBreakdown.find(m => m.key === 'sodium_mg')?.pct ?? null
+    },
+    previousPeriodComparison: prevStats.trackedNutCount > 0 || prevStats.trackedSleepCount > 0 ? {
+      nutritionTrackedDays: prevStats.trackedNutCount,
+      avgCalories: prevStats.avgCal !== null ? Math.round(prevStats.avgCal) : null,
+      avgProteinG: prevStats.avgPro !== null ? Math.round(prevStats.avgPro) : null,
+      avgSleepMinutes: prevStats.avgSleepMin !== null ? Math.round(prevStats.avgSleepMin) : null
+    } : null
+  };
+}
+
+function saveApiKey() {
+  const key = document.getElementById('apiKeyInput').value.trim();
+  localStorage.setItem('nutritracker_gemini_key', key);
+  showToast('API Key saved on device');
+}
+
+async function generateAiReview() {
+  if (!state.aiConsentGiven) {
+    showToast('Please confirm the data notice first');
+    return;
+  }
+
+  const apiKey = (localStorage.getItem('nutritracker_gemini_key') || '').trim();
+  if (!apiKey) {
+    state.insights.aiError = 'No Gemini API Key found. Please enter your key in the Goals tab.';
+    renderAiReviewState();
+    return;
+  }
+
+  state.insights.aiLoading = true;
+  state.insights.aiError = null;
+  renderAiReviewState();
+
+  const systemPrompt = `You are a factual, constructive nutrition and sleep analyst for NutriTracker.
+Base every statement ONLY on the provided JSON payload. Never invent meals or sleep times.
+If nutritionTrackedDays < 3 or sleepTrackedDays < 3, set "dataNotice" to a short note about limited data.
+Keep each list to at most 3 concise bullet strings.`;
+
+  const responseSchema = {
+    type: 'OBJECT',
+    properties: {
+      dataNotice: { type: 'STRING', nullable: true },
+      wentWell: { type: 'ARRAY', items: { type: 'STRING' } },
+      toImprove: { type: 'ARRAY', items: { type: 'STRING' } },
+      dataShows: { type: 'ARRAY', items: { type: 'STRING' } },
+      nextFocus: { type: 'STRING' }
+    },
+    required: ['wentWell', 'toImprove', 'dataShows', 'nextFocus']
+  };
+
+  try {
+    const payload = buildAiPayload();
+    const geminiJson = await callGeminiVisionApi(apiKey, {
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ role: 'user', parts: [{ text: JSON.stringify(payload) }] }],
+      generationConfig: {
+        temperature: 0.2,
+        responseMimeType: 'application/json',
+        responseSchema: responseSchema
+      }
+    });
+
+    const rawText = geminiJson?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const data = JSON.parse(rawText);
+
+    state.insights.aiResult = {
+      dataNotice: data.dataNotice || null,
+      wentWell: (data.wentWell || []).slice(0, 3),
+      toImprove: (data.toImprove || []).slice(0, 3),
+      dataShows: (data.dataShows || []).slice(0, 3),
+      nextFocus: data.nextFocus || ''
+    };
+  } catch (err) {
+    state.insights.aiError = err.message || 'Failed to reach Gemini API';
+  } finally {
+    state.insights.aiLoading = false;
+    renderAiReviewState();
+  }
+}
+
+function renderAiReviewState() {
+  const out = document.getElementById('aiReviewOutput');
+  const btn = document.getElementById('generateAiBtn');
+  if (!out || !btn) return;
+
+  btn.disabled = state.insights.aiLoading;
+  btn.textContent = state.insights.aiLoading ? 'Analyzing period data...' : 'Generate AI Review';
+
+  if (state.insights.aiLoading) {
+    out.innerHTML = `<div class="bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-400">Generating structured review from aggregated stats...</div>`;
+    return;
+  }
+
+  if (state.insights.aiError) {
+    out.innerHTML = `
+      <div class="bg-rose-500/10 border border-rose-500/30 rounded-xl p-3 space-y-2">
+        <div class="font-bold text-rose-300">AI Review Error</div>
+        <p class="text-[11px] text-slate-300 leading-relaxed">
+          ${escapeHtml(state.insights.aiError)}
+        </p>
+        <button onclick="generateAiReview()" class="bg-slate-900 hover:bg-slate-800 border border-slate-700 text-white font-semibold text-[11px] px-3 py-1 rounded-lg">Retry</button>
+      </div>
+    `;
+    return;
+  }
+
+  const r = state.insights.aiResult;
+  if (!r) {
+    out.innerHTML = '';
+    return;
+  }
+
+  const renderBullets = (items) => items.map(i => `<li class="text-slate-300 leading-relaxed">• ${escapeHtml(i)}</li>`).join('');
+
+  out.innerHTML = `
+    <div class="space-y-3 bg-slate-950 border border-slate-800 rounded-xl p-3">
+      ${r.dataNotice ? `<div class="text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2.5 py-1.5">${escapeHtml(r.dataNotice)}</div>` : ''}
+      <div>
+        <h4 class="text-[11px] font-bold uppercase tracking-wider text-emerald-400 mb-1">What went well?</h4>
+        <ul class="space-y-1 text-[11px]">${renderBullets(r.wentWell)}</ul>
+      </div>
+      <div>
+        <h4 class="text-[11px] font-bold uppercase tracking-wider text-amber-400 mb-1">What could be improved?</h4>
+        <ul class="space-y-1 text-[11px]">${renderBullets(r.toImprove)}</ul>
+      </div>
+      <div>
+        <h4 class="text-[11px] font-bold uppercase tracking-wider text-sky-400 mb-1">What does the data show?</h4>
+        <ul class="space-y-1 text-[11px]">${renderBullets(r.dataShows)}</ul>
+      </div>
+      <div class="pt-2 border-t border-slate-800">
+        <h4 class="text-[11px] font-bold uppercase tracking-wider text-white mb-1">One focus for next week</h4>
+        <p class="text-xs font-semibold text-emerald-300 leading-relaxed">${escapeHtml(r.nextFocus)}</p>
+      </div>
+    </div>
+  `;
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  loadState();
+  recalculateTargets();
+  renderQuickFoods();
+});
+
+// PWA installation prompt (Chrome, Edge, Android). On iOS, show manual instructions.
+let deferredInstallPrompt = null;
+
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  const btn = document.getElementById('pwaInstallBtn');
+  if (btn) btn.classList.remove('hidden');
+});
+
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  const btn = document.getElementById('pwaInstallBtn');
+  if (btn) btn.classList.add('hidden');
+});
+
+async function installNutriTracker() {
+  if (deferredInstallPrompt) {
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    return;
+  }
+
+  const standalone = window.matchMedia('(display-mode: standalone)').matches ||
+    window.navigator.standalone === true;
+  if (standalone) {
+    alert('NutriTracker is already installed.');
+  } else {
+    alert('To install NutriTracker:\\n\\n• Chrome / Edge: use the install icon in the address bar or the browser menu.\\n• iPhone / iPad: tap Share, then “Add to Home Screen”.');
+  }
+}
+
+// PWA Service Worker registrieren
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then((reg) => console.log('PWA Service Worker bereit:', reg.scope))
+      .catch((err) => console.error('PWA Fehler:', err));
+  });
+}
+</script>
+</body>
+</html>
