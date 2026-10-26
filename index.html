@@ -63,10 +63,6 @@
       <img src="./icons/icon-192.png" alt="NutriTracker Icon" class="w-7 h-7 rounded-lg object-cover" />
       <h1 class="text-base font-extrabold tracking-tight text-white">NutriTracker</h1>
     </div>
-    <button id="pwaInstallBtn" type="button" onclick="installNutriTracker()"
-      class="ml-auto text-[11px] font-bold text-slate-950 bg-emerald-500 hover:bg-emerald-400 px-3 py-2 rounded-lg transition">
-      Install App
-    </button>
   </header>
 
   <!-- MAIN CONTENT -->
@@ -2464,39 +2460,6 @@ window.addEventListener('DOMContentLoaded', () => {
   recalculateTargets();
   renderQuickFoods();
 });
-
-// PWA installation prompt (Chrome, Edge, Android). On iOS, show manual instructions.
-let deferredInstallPrompt = null;
-
-window.addEventListener('beforeinstallprompt', (event) => {
-  event.preventDefault();
-  deferredInstallPrompt = event;
-  const btn = document.getElementById('pwaInstallBtn');
-  if (btn) btn.classList.remove('hidden');
-});
-
-window.addEventListener('appinstalled', () => {
-  deferredInstallPrompt = null;
-  const btn = document.getElementById('pwaInstallBtn');
-  if (btn) btn.classList.add('hidden');
-});
-
-async function installNutriTracker() {
-  if (deferredInstallPrompt) {
-    deferredInstallPrompt.prompt();
-    await deferredInstallPrompt.userChoice;
-    deferredInstallPrompt = null;
-    return;
-  }
-
-  const standalone = window.matchMedia('(display-mode: standalone)').matches ||
-    window.navigator.standalone === true;
-  if (standalone) {
-    alert('NutriTracker is already installed.');
-  } else {
-    alert('To install NutriTracker:\\n\\n• Chrome / Edge: use the install icon in the address bar or the browser menu.\\n• iPhone / iPad: tap Share, then “Add to Home Screen”.');
-  }
-}
 
 // PWA Service Worker registrieren
 if ('serviceWorker' in navigator) {
