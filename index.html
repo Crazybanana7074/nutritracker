@@ -539,6 +539,12 @@ const MICRO_META = [
 function getNutrientProfile(item) {
   if (!item) return null;
   if (item.isCustom && item.nutrientsPer100g) {
+    const rawMicros = item.nutrientsPer100g.micros || {};
+    const resolvedMicros = {};
+    MICRO_META.forEach(m => {
+      resolvedMicros[m.key] = Number(rawMicros[m.key] !== undefined ? rawMicros[m.key] : item.nutrientsPer100g[m.key]) || 0;
+    });
+
     return {
       name: item.name || 'Custom Meal',
       defaultG: item.baseGrams || item.grams || 100,
@@ -550,7 +556,7 @@ function getNutrientProfile(item) {
       sat: Number(item.nutrientsPer100g.sat) || 0,
       mono: Number(item.nutrientsPer100g.mono) || 0,
       poly: Number(item.nutrientsPer100g.poly) || 0,
-      micros: item.nutrientsPer100g.micros || {}
+      micros: resolvedMicros
     };
   }
   return USDA_DB[item.foodKey] || null;
@@ -1505,13 +1511,13 @@ GUIDELINES:
 ${dbCatalog}
      If and only if it directly matches one of these simple single foods, set "isDatabaseMatch": true, and "matchedFoodKey" to that exact key.
 
-   - Dietary Supplements & Nutrition Labels:
-     If the image shows dietary supplements (capsules, tablets, drops, powders, protein powder) or a nutrition/supplement facts label:
-     Set "isDatabaseMatch": false and "matchedFoodKey": "CUSTOM_DISH".
-     Set "name" to the specific supplement or product name (e.g., "Magnesiumbisglycinat", "Whey Protein Isolat", "Vitamin D3 + K2").
-     Set "estimatedTotalGrams" to the realistic single-serving portion (e.g., 1g for 1 capsule/tablet, 30g for 1 scoop of protein, or the amount indicated in the user note).
-     In "ingredients", list the active compounds or serving items with their portion weight and macros.
-     In "nutrientsPer100g", you MUST scale the stated nutritional and micronutrient values of the serving to a 100g basis, so that NutriTracker's calculation (value * grams / 100) exactly yields the correct label dosage for the portion.
+  - Dietary Supplements & Nutrition Labels:
+     If the image shows a supplement facts label or tablet/capsule bottle:
+     Look at the stated serving size (e.g. 1 Tablet = 1.5g).
+     If the label says "Magnesium 400mg per tablet (1.5g)":
+     Set "estimatedTotalGrams": 1.5 (weight of 1 serving/tablet).
+     You MUST calculate the 100g value for magnesium_mg: (400 / 1.5) * 100 = 26666 mg.
+     So when NutriTracker calculates (26666 * 1.5 / 100), the logged value is EXACTLY 400 mg!
 
    - Cooked Meals, Composite Dishes, Recipes & Other Foods:
      If it is a cooked meal, recipe, or ANY food not in the 13-item list:
@@ -1645,7 +1651,7 @@ ${dbCatalog}
     const drafts = [];
     reliable.forEach(d => {
       const isDb = Boolean(d.isDatabaseMatch) && d.matchedFoodKey && USDA_DB[d.matchedFoodKey];
-      const gramsClamped = Math.max(10, Math.round((Number(d.estimatedTotalGrams) || 150) / 5) * 5);
+      const gramsClamped = Math.max(1, Math.round(Number(d.estimatedTotalGrams) || 100));
       
       if (isDb) {
         drafts.push({
