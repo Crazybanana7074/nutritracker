@@ -396,6 +396,20 @@
         </div>
       </div>
     </section>
+    <!-- Modal für KI-Mahlzeitenvorschläge -->
+<div id="aiMealSuggestionModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-3">
+  <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-[400px] p-4 space-y-3 max-h-[85vh] overflow-y-auto no-scrollbar">
+    <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+      <div>
+        <h3 id="suggestionModalTitle" class="text-xs font-bold uppercase tracking-wider text-emerald-400">KI-Vorschlag</h3>
+        <p class="text-[10px] text-slate-400">Abgestimmt auf deine offenen Tagesziele</p>
+      </div>
+      <button onclick="closeSuggestionModal()" class="text-slate-400 hover:text-white text-xs px-2 py-1">✕</button>
+    </div>
+    
+    <div id="suggestionModalContent" class="space-y-2 text-xs"></div>
+  </div>
+</div>
 
   </main>
 
@@ -728,32 +742,72 @@ function loadState() {
   syncProfileInputsFromState();
 }
 
-function saveCustomToFavorites(itemId) {
+// Prüft, ob ein Gericht bereits in den Favoriten existiert
+function getFavoriteKeyByName(name) {
+  if (!state.customFoods) return null;
+  const clean = name.replace(/^★\s*/, '').trim().toLowerCase();
+  for (const [key, val] of Object.entries(state.customFoods)) {
+    const valClean = val.name.replace(/^★\s*/, '').trim().toLowerCase();
+    if (valClean === clean) return key;
+  }
+  return null;
+}
+
+// Schaltet Favorit an/aus (Toggle per Stern-Klick)
+function toggleFavorite(itemId) {
   const item = state.loggedItems.find(i => i.id === itemId);
-  if (!item || !item.isCustom || !item.nutrientsPer100g) return;
+  if (!item) return;
 
-  const key = 'custom_' + item.name.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + Date.now().toString().slice(-4);
-  const n = item.nutrientsPer100g;
+  const existingKey = getFavoriteKeyByName(item.name);
 
-  const newEntry = {
-    name: `★ ${item.name}`,
-    defaultG: item.grams || 150,
-    cal: Number(n.cal) || 0,
-    pro: Number(n.pro) || 0,
-    carbs: Number(n.carbs) || 0,
-    fiber: Number(n.fiber) || 0,
-    fat: Number(n.fat) || 0,
-    sat: Number(n.sat) || 0,
-    mono: Number(n.mono) || 0,
-    poly: Number(n.poly) || 0,
-    micros: n.micros || {}
-  };
+  if (existingKey) {
+    // Bereits Favorit -> entfernen
+    delete state.customFoods[existingKey];
+    delete USDA_DB[existingKey];
+    saveState();
+    renderQuickFoods();
+    renderApp();
+    showToast('Aus Favoriten entfernt');
+  } else {
+    // Noch kein Favorit -> hinzufügen
+    const f = getNutrientProfile(item);
+    if (!f) return;
 
-  state.customFoods[key] = newEntry;
-  USDA_DB[key] = newEntry;
+    const key = 'custom_' + item.name.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + Date.now().toString().slice(-4);
+    
+    // Nährwert-Profil sauber übernehmen
+    const newEntry = {
+      name: `★ ${item.name.replace(/^★\s*/, '')}`,
+      defaultG: item.grams || f.defaultG || 100,
+      cal: f.cal,
+      pro: f.pro,
+      carbs: f.carbs,
+      fiber: f.fiber,
+      fat: f.fat,
+      sat: f.sat,
+      mono: f.mono,
+      poly: f.poly,
+      micros: f.micros || {}
+    };
+
+    state.customFoods[key] = newEntry;
+    USDA_DB[key] = newEntry;
+    saveState();
+    renderQuickFoods();
+    renderApp();
+    showToast('Zu Favoriten hinzugefügt!');
+  }
+}
+
+// Löscht einen Favoriten dauerhaft (für die Quick-Foods-Liste)
+function deleteFavorite(foodKey) {
+  if (!state.customFoods[foodKey]) return;
+  delete state.customFoods[foodKey];
+  delete USDA_DB[foodKey];
   saveState();
   renderQuickFoods();
-  showToast('In Quick Foods gespeichert!');
+  renderApp();
+  showToast('Favorit gelöscht');
 }
   
 function dismissMigrationNotice() {
@@ -979,6 +1033,30 @@ if (dayItems.length === 0) {
             </div>`;
         }
 
+        const isFav = Boolean(getFavoriteKeyByName(item.name));
+        const favBtnHtml = `
+          <button onclick="toggleFavorite(${item.id})" 
+            title="${isFav ? 'Aus Favoriten entfernen' : 'Zu Favoriten hinzufügen'}" 
+            class="${isFav ? 'text-amber-400 scale-110' : 'text-slate-500 hover:text-amber-300'} text-sm px-1 transition-transform">
+            ${isFav ? '★' : '☆'}
+          </button>
+        `;
+
+        // In der mealOrder.map(mealName => { ... }) Schleife:
+return `
+  <div class="space-y-1.5 pt-2 first:pt-0">
+    <div class="flex items-center justify-between px-1">
+      <div class="flex items-center gap-2">
+        <span class="text-[11px] font-extrabold uppercase tracking-wider text-emerald-400">${mealName}</span>
+        <button onclick="requestAiMealSuggestion('${mealName}')" class="text-[10px] text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 px-1.5 py-0.5 rounded flex items-center gap-1">
+          <span>✨</span><span>Vorschlag</span>
+        </button>
+      </div>
+      <span class="text-[11px] font-semibold text-slate-400">${groupCal} kcal · ${groupPro.toFixed(1)}g P</span>
+    </div>
+    ${itemsHtml}
+  </div>`;
+
         return `
           <div class="bg-slate-950 border border-slate-800/80 rounded-xl p-2.5 space-y-1.5">
             <div class="flex items-center justify-between">
@@ -987,7 +1065,14 @@ if (dayItems.length === 0) {
                 ${isCustom ? '<span class="text-[9px] font-bold text-indigo-300 bg-indigo-500/20 px-1.5 py-0.5 rounded">KI-Gericht</span>' : ''}
               </div>
               <div class="flex items-center gap-1">
-                ${isCustom ? `<button onclick="saveCustomToFavorites(${item.id})" title="Als Favorit speichern" class="text-amber-400 hover:text-amber-300 text-xs px-1">★</button>` : ''}
+            const isFav = Boolean(getFavoriteKeyByName(item.name));
+            const favBtnHtml = `
+              <button onclick="toggleFavorite(${item.id})" 
+                title="${isFav ? 'Aus Favoriten entfernen' : 'Zu Favoriten hinzufügen'}" 
+                class="${isFav ? 'text-amber-400 scale-110' : 'text-slate-500 hover:text-amber-300'} text-sm px-1 transition-transform">
+                ${isFav ? '★' : '☆'}
+              </button>
+            `;
                 <button onclick="removeLoggedItem(${item.id})" class="text-slate-500 hover:text-rose-400 text-xs px-1">✕</button>
               </div>
             </div>
@@ -1066,19 +1151,39 @@ function renderMicrosTab(logged) {
 // =====================================================
 function renderQuickFoods() {
   const q = (document.getElementById('quickFilterInput')?.value || '').toLowerCase();
-  const entries = Object.entries(USDA_DB).filter(([_, f]) => f.name.toLowerCase().includes(q));
+  let entries = Object.entries(USDA_DB).filter(([_, f]) => f.name.toLowerCase().includes(q));
+
+  // Eigene Favoriten immer nach ganz oben sortieren
+  entries.sort(([keyA, a], [keyB, b]) => {
+    const isFavA = Boolean(state.customFoods && state.customFoods[keyA]);
+    const isFavB = Boolean(state.customFoods && state.customFoods[keyB]);
+    if (isFavA && !isFavB) return -1;
+    if (!isFavA && isFavB) return 1;
+    return a.name.localeCompare(b.name);
+  });
 
   document.getElementById('quickFoodList').innerHTML = entries.map(([key, f]) => {
     const kcal = Math.round((f.cal * f.defaultG) / 100);
+    const isCustom = Boolean(state.customFoods && state.customFoods[key]);
+
     return `
-      <div class="flex items-center justify-between bg-slate-950 border border-slate-800/80 rounded-xl px-3 py-2">
-        <div>
-          <div class="text-xs font-bold text-white">${f.name}</div>
+      <div class="flex items-center justify-between bg-slate-950 border ${isCustom ? 'border-amber-500/30 bg-amber-500/5' : 'border-slate-800/80'} rounded-xl px-3 py-2">
+        <div class="flex-1 pr-2">
+          <div class="flex items-center gap-1.5">
+            <span class="text-xs font-bold ${isCustom ? 'text-amber-300' : 'text-white'}">${escapeHtml(f.name)}</span>
+          </div>
           <div class="text-[10px] text-slate-400">${f.defaultG}g · ${kcal} kcal · ${((f.pro * f.defaultG)/100).toFixed(1)}g P</div>
         </div>
-        <button onclick="quickLogFood('${key}')" class="bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 font-bold text-xs px-2.5 py-1 rounded-lg">
-          + Add
-        </button>
+        <div class="flex items-center gap-1.5 shrink-0">
+          ${isCustom ? `
+            <button onclick="deleteFavorite('${key}')" title="Favorit entfernen" class="text-slate-500 hover:text-rose-400 text-xs p-1">
+              ✕
+            </button>
+          ` : ''}
+          <button onclick="quickLogFood('${key}')" class="bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 font-bold text-xs px-2.5 py-1 rounded-lg">
+            + Add
+          </button>
+        </div>
       </div>
     `;
   }).join('');
@@ -1400,24 +1505,37 @@ async function runPhotoScanWithCurrentSettings() {
   const validKeys = Object.keys(USDA_DB);
   const dbCatalog = validKeys.map(k => `- "${k}": ${USDA_DB[k].name}`).join('\n');
 
-  const systemInstruction = `You are a culinary expert, chef, and registered dietitian assistant for NutriTracker.
-You inspect a meal photo alongside an optional user hint/note.
+const systemInstruction = `You are a culinary expert, chef, and registered dietitian assistant for NutriTracker.
+You inspect a meal photo, supplement photo, or nutrition facts label alongside an optional user hint/note.
 
 GUIDELINES:
-1. Pay very close attention to the user note (if provided). It contains ground truth about ingredients, dish identity, or recipe specifics.
-2. If no food is visible, return an empty "dishes" array.
-3. For each detected dish or food:
-   - Identify if it is a pure standalone item exactly in this 13-item list:
+1. Pay very close attention to the user note (if provided). It contains ground truth about ingredients, dish identity, supplement dosage, or recipe specifics.
+2. If no food, supplement, or nutrition label is visible, return an empty "dishes" array.
+3. For each detected item (dish, food, supplement, or product):
+   - Standalone Database Match:
+     Identify if it is a pure standalone item exactly in this 13-item list:
 ${dbCatalog}
      If and only if it directly matches one of these simple single foods, set "isDatabaseMatch": true, and "matchedFoodKey" to that exact key.
-   - If it is a cooked meal, composite dish, recipe, or ANY food not in those 13 items:
+
+   - Dietary Supplements & Nutrition Labels:
+     If the image shows dietary supplements (capsules, tablets, drops, powders, protein powder) or a nutrition/supplement facts label:
+     Set "isDatabaseMatch": false and "matchedFoodKey": "CUSTOM_DISH".
+     Set "name" to the specific supplement or product name (e.g., "Magnesiumbisglycinat", "Whey Protein Isolat", "Vitamin D3 + K2").
+     Set "estimatedTotalGrams" to the realistic single-serving portion (e.g., 1g for 1 capsule/tablet, 30g for 1 scoop of protein, or the amount indicated in the user note).
+     In "ingredients", list the active compounds or serving items with their portion weight and macros.
+     In "nutrientsPer100g", you MUST scale the stated nutritional and micronutrient values of the serving to a 100g basis, so that NutriTracker's calculation (value * grams / 100) exactly yields the correct label dosage for the portion.
+
+   - Cooked Meals, Composite Dishes, Recipes & Other Foods:
+     If it is a cooked meal, recipe, or ANY food not in the 13-item list:
      Set "isDatabaseMatch": false and "matchedFoodKey": "CUSTOM_DISH".
      You MUST estimate the individual ingredients that make up the dish in the "ingredients" array:
        - name (e.g. "Rinderhackfleisch", "Spaghetti (gekocht)", "Tomatensauce", "Olivenöl")
        - grams (realistic weight in grams)
        - cal, pro, carbs, fat for this ingredient portion
      You MUST estimate the overall dish portion weight in "estimatedTotalGrams".
-     You MUST estimate realistic average nutrition per 100g of the whole dish in "nutrientsPer100g":
+
+   - Complete Nutrient Profiling (for both Supplements and Custom Dishes):
+     You MUST estimate/calculate realistic nutrition per 100g in "nutrientsPer100g":
        cal, pro, carbs, fiber, fat, sat, mono, poly, sodium_mg, potassium_mg, magnesium_mg, calcium_mg, iron_mg, zinc_mg, phosphorus_mg, vit_a_mcg, vit_c_mg, vit_d_mcg, vit_e_mg, vit_k_mcg, vit_b1_mg, vit_b2_mg, vit_b3_mg, vit_b6_mg, vit_b9_mcg, vit_b12_mcg.
 4. Provide confidence (0.0 to 1.0). Keep estimates realistic and practical.`;
 
@@ -1811,6 +1929,189 @@ function commitDraftItems() {
   renderApp();
   showToast(`Logged to ${state.selectedDate}`);
   switchTab('today');
+}
+
+  async function requestAiMealSuggestion(mealName) {
+  const apiKey = (localStorage.getItem('nutritracker_gemini_key') || '').trim();
+  if (!apiKey) {
+    showToast('Bitte erst Gemini API-Key in Goals eintragen');
+    switchTab('goals');
+    return;
+  }
+
+  const modal = document.getElementById('aiMealSuggestionModal');
+  const titleEl = document.getElementById('suggestionModalTitle');
+  const contentEl = document.getElementById('suggestionModalContent');
+  
+  titleEl.textContent = `✨ KI-Vorschlag für ${mealName}`;
+  contentEl.innerHTML = `
+    <div class="p-4 text-center space-y-2">
+      <div class="w-6 h-6 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin mx-auto"></div>
+      <p class="text-xs text-slate-400">Analysiere offene Makros & Favoriten...</p>
+    </div>
+  `;
+  modal.classList.remove('hidden');
+
+  // 1. Offene Makros & Mikros für heute berechnen
+  const current = computeTotalsForDate(state.selectedDate);
+  const t = state.targets;
+  const remCal = Math.max(0, Math.round(t.cal - current.cal));
+  const remPro = Math.max(0, Math.round(t.pro - current.pro));
+  const remFat = Math.max(0, Math.round(t.fat - current.fat));
+  const remNetCarbs = Math.max(0, Math.round(t.netCarbs - current.netCarbs));
+
+  // Fehlende Mikronährstoffe ermitteln (< 70% Ziel)
+  const lowMicros = MICRO_META
+    .filter(m => !m.isCap && ((current.micros[m.key] || 0) / (t.micros[m.key] || 1)) < 0.7)
+    .map(m => m.label);
+
+  // 2. Favoriten und bisher gegessene Gerichte sammeln
+  const favorites = Object.values(state.customFoods || {}).map(f => f.name.replace(/^★\s*/, ''));
+  const recentHistory = [...new Set(state.loggedItems.map(i => i.name.replace(/^★\s*/, '')))].slice(-15);
+
+  const prompt = `Du bist ein präziser Ernährungsassistent.
+Der Nutzer plant gerade seine Mahlzeit "${mealName}".
+Offene Tageswerte bis zum Ziel:
+- Kalorien: ~${remCal} kcal
+- Protein: ~${remPro}g
+- Netto-Kohlenhydrate: ~${remNetCarbs}g
+- Fett: ~${remFat}g
+Besonders noch fehlende Mikronährstoffe: ${lowMicros.length ? lowMicros.join(', ') : 'fast alle gedeckt'}.
+
+Favoriten des Nutzers: ${favorites.length ? favorites.join(', ') : 'Keine hinterlegt'}.
+Zuletzt gegessene Gerichte: ${recentHistory.join(', ')}.
+
+Erstelle genau 2 bis 3 konkrete Mahlzeitenvorschläge für "${mealName}", die die offenen Lücken (insbesondere Protein und fehlende Mikros) optimal füllen. Bevorzuge dabei Mahlzeiten/Zutaten aus den Favoriten oder passe deren Portionsgrößen an.
+Gib die geschätzten Nährwerte für die gesamte vorgeschlagene Portion an.`;
+
+  const responseSchema = {
+    type: 'OBJECT',
+    properties: {
+      suggestions: {
+        type: 'ARRAY',
+        items: {
+          type: 'OBJECT',
+          properties: {
+            name: { type: 'STRING' },
+            whyItFits: { type: 'STRING' },
+            estimatedGrams: { type: 'NUMBER' },
+            cal: { type: 'NUMBER' },
+            pro: { type: 'NUMBER' },
+            carbs: { type: 'NUMBER' },
+            fat: { type: 'NUMBER' },
+            fiber: { type: 'NUMBER' },
+            ingredients: {
+              type: 'ARRAY',
+              items: {
+                type: 'OBJECT',
+                properties: {
+                  name: { type: 'STRING' },
+                  grams: { type: 'NUMBER' }
+                },
+                required: ['name', 'grams']
+              }
+            }
+          },
+          required: ['name', 'whyItFits', 'estimatedGrams', 'cal', 'pro', 'carbs', 'fat', 'ingredients']
+        }
+      }
+    },
+    required: ['suggestions']
+  };
+
+  try {
+    const rawRes = await callGeminiVisionApi(apiKey, {
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0.3,
+        responseMimeType: 'application/json',
+        responseSchema
+      }
+    });
+
+    const parsed = JSON.parse(rawRes.candidates[0].content.parts[0].text);
+    const suggestions = parsed.suggestions || [];
+
+    if (suggestions.length === 0) {
+      contentEl.innerHTML = `<p class="text-slate-400">Keine passenden Vorschläge generiert.</p>`;
+      return;
+    }
+
+    // Temporär im window speichern für den 1-Klick-Log
+    window._currentSuggestions = suggestions;
+    window._currentMealTarget = mealName;
+
+    contentEl.innerHTML = suggestions.map((s, idx) => `
+      <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 space-y-2">
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <div class="font-bold text-white text-xs">${escapeHtml(s.name)}</div>
+            <div class="text-[10px] text-emerald-400 font-semibold mt-0.5">
+              ${Math.round(s.cal)} kcal · ${s.pro}g P · ${s.carbs}g C · ${s.fat}g F
+            </div>
+          </div>
+          <button onclick="logSuggestedMeal(${idx})" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-[10px] px-2.5 py-1 rounded-lg shrink-0">
+            + Loggen
+          </button>
+        </div>
+        <p class="text-[10px] text-slate-300 bg-slate-900/70 rounded-lg p-2 leading-relaxed">
+          💡 ${escapeHtml(s.whyItFits)}
+        </p>
+        <div class="text-[9px] text-slate-400">
+          Zutaten: ${s.ingredients.map(i => `${escapeHtml(i.name)} (${i.grams}g)`).join(', ')}
+        </div>
+      </div>
+    `).join('');
+
+  } catch (err) {
+    contentEl.innerHTML = `
+      <div class="text-rose-400 text-xs p-2 bg-rose-500/10 rounded-xl border border-rose-500/30">
+        Fehler beim Generieren: ${escapeHtml(err.message)}
+      </div>
+    `;
+  }
+}
+
+function logSuggestedMeal(idx) {
+  const s = window._currentSuggestions?.[idx];
+  const meal = window._currentMealTarget || 'Dinner';
+  if (!s) return;
+
+  const totalG = s.estimatedGrams || 200;
+  // Auf 100g umrechnen für das Datenmodell
+  const factor = 100 / totalG;
+
+  state.loggedItems.push({
+    id: Date.now() + Math.random(),
+    date: state.selectedDate,
+    createdAt: Date.now(),
+    meal: meal,
+    foodKey: null,
+    isCustom: true,
+    name: s.name,
+    grams: totalG,
+    baseGrams: totalG,
+    ingredients: s.ingredients || [],
+    nutrientsPer100g: {
+      cal: Math.round(s.cal * factor),
+      pro: Number((s.pro * factor).toFixed(1)),
+      carbs: Number((s.carbs * factor).toFixed(1)),
+      fiber: Number(((s.fiber || 0) * factor).toFixed(1)),
+      fat: Number((s.fat * factor).toFixed(1)),
+      sat: Number(((s.fat * 0.3) * factor).toFixed(1)),
+      mono: 0, poly: 0,
+      micros: {}
+    }
+  });
+
+  saveState();
+  renderApp();
+  closeSuggestionModal();
+  showToast(`Zu ${meal} hinzugefügt!`);
+}
+
+function closeSuggestionModal() {
+  document.getElementById('aiMealSuggestionModal').classList.add('hidden');
 }
 
 // =====================================================
