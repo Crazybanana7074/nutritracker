@@ -7,6 +7,15 @@ const APP_SHELL = [
   './icons/icon-512.png'
 ];
 
+// Erlaubte externe CDNs, die offline/schnell verfügbar sein dürfen
+const ALLOWED_CDNS = [
+  'cdn.tailwindcss.com',
+  'fonts.googleapis.com',
+  'fonts.gstatic.com',
+  'cdn.jsdelivr.net',
+  'unpkg.com'
+];
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
