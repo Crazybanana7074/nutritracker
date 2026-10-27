@@ -16,7 +16,6 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
   <style>
-  <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     body {
@@ -1091,6 +1090,11 @@ if (dayItems.length === 0) {
         </div>`;
     }).join('');
   }
+    renderMicrosTab(logged);
+  if (state.activeTab === 'insights') renderInsightsTab();
+}
+
+function renderMicrosTab(logged) { // <--- Das ist deine Zeile 1094
 
 function renderMicrosTab(logged) {
   const t = state.targets.micros;
