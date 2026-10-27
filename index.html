@@ -249,13 +249,13 @@
         <div>
           <input id="photoHintInput" type="text"
             oninput="syncPhotoHint(this.value)"
-            placeholder="Hinweis für KI (optional, z.B. 'Spaghetti Bolognese mit Rind')"
+            placeholder="Optional hint for AI (e.g. Steak, Spaghetti,...)"
             class="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 outline-none" />
         </div>
       </div>
 
       <button onclick="toggleBarcodeScanner()" class="w-full bg-slate-950 hover:bg-slate-800 border border-slate-800 text-sky-400 font-bold text-xs py-2 rounded-xl flex items-center justify-center gap-2">
-  <span>║▌║ Barcode scannen (OpenFoodFacts)</span>
+  <span>║▌║ Barcode scanner</span>
 </button>
 <div id="barcodeReaderBox" class="hidden overflow-hidden rounded-xl border border-slate-800 bg-black"></div>
 
@@ -387,10 +387,10 @@
         <span class="text-[11px] text-slate-400 block font-semibold">Daten-Backup (Lokal sichern & wiederherstellen)</span>
         <div class="grid grid-cols-2 gap-2">
           <button onclick="exportBackupJson()" class="bg-slate-950 hover:bg-slate-800 border border-slate-800 text-emerald-400 font-bold text-xs py-2 rounded-xl">
-            ⬇ Backup speichern
+            ⬇ Save Backup
           </button>
           <label class="cursor-pointer bg-slate-950 hover:bg-slate-800 border border-slate-800 text-sky-400 font-bold text-xs py-2 rounded-xl text-center">
-            ⬆ Backup laden
+            ⬆ Load Backup
             <input type="file" accept=".json" class="hidden" onchange="importBackupJson(event)" />
           </label>
         </div>
