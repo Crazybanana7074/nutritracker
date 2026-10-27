@@ -1009,19 +1009,26 @@ if (dayItems.length === 0) {
       </div>`;
   } else {
     const mealOrder = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
+
     mealContainer.innerHTML = mealOrder.map(mealName => {
       const groupItems = dayItems.filter(i => i.meal === mealName);
       if (groupItems.length === 0) return '';
 
-      let groupCal = 0, groupPro = 0;
+      let groupCal = 0;
+      let groupPro = 0;
+
+      // 1. JavaScript-Logik VOR den Backticks ausführen
       const itemsHtml = groupItems.map(item => {
         const f = getNutrientProfile(item);
         if (!f) return '';
+
         const kcal = Math.round((f.cal * item.grams) / 100);
         const pro = ((f.pro * item.grams) / 100).toFixed(1);
         groupCal += kcal;
         groupPro += Number(pro);
+
         const isCustom = Boolean(item.isCustom);
+        const isFav = Boolean(getFavoriteKeyByName(item.name));
 
         let ingredientHtml = '';
         if (isCustom && Array.isArray(item.ingredients) && item.ingredients.length > 0) {
@@ -1033,7 +1040,6 @@ if (dayItems.length === 0) {
             </div>`;
         }
 
-        const isFav = Boolean(getFavoriteKeyByName(item.name));
         const favBtnHtml = `
           <button onclick="toggleFavorite(${item.id})" 
             title="${isFav ? 'Aus Favoriten entfernen' : 'Zu Favoriten hinzufügen'}" 
@@ -1041,21 +1047,6 @@ if (dayItems.length === 0) {
             ${isFav ? '★' : '☆'}
           </button>
         `;
-
-        // In der mealOrder.map(mealName => { ... }) Schleife:
-return `
-  <div class="space-y-1.5 pt-2 first:pt-0">
-    <div class="flex items-center justify-between px-1">
-      <div class="flex items-center gap-2">
-        <span class="text-[11px] font-extrabold uppercase tracking-wider text-emerald-400">${mealName}</span>
-        <button onclick="requestAiMealSuggestion('${mealName}')" class="text-[10px] text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 px-1.5 py-0.5 rounded flex items-center gap-1">
-          <span>✨</span><span>Vorschlag</span>
-        </button>
-      </div>
-      <span class="text-[11px] font-semibold text-slate-400">${groupCal} kcal · ${groupPro.toFixed(1)}g P</span>
-    </div>
-    ${itemsHtml}
-  </div>`;
 
         return `
           <div class="bg-slate-950 border border-slate-800/80 rounded-xl p-2.5 space-y-1.5">
@@ -1065,14 +1056,7 @@ return `
                 ${isCustom ? '<span class="text-[9px] font-bold text-indigo-300 bg-indigo-500/20 px-1.5 py-0.5 rounded">KI-Gericht</span>' : ''}
               </div>
               <div class="flex items-center gap-1">
-            const isFav = Boolean(getFavoriteKeyByName(item.name));
-            const favBtnHtml = `
-              <button onclick="toggleFavorite(${item.id})" 
-                title="${isFav ? 'Aus Favoriten entfernen' : 'Zu Favoriten hinzufügen'}" 
-                class="${isFav ? 'text-amber-400 scale-110' : 'text-slate-500 hover:text-amber-300'} text-sm px-1 transition-transform">
-                ${isFav ? '★' : '☆'}
-              </button>
-            `;
+                ${favBtnHtml}
                 <button onclick="removeLoggedItem(${item.id})" class="text-slate-500 hover:text-rose-400 text-xs px-1">✕</button>
               </div>
             </div>
@@ -1091,20 +1075,22 @@ return `
           </div>`;
       }).join('');
 
+      // 2. Erst hier wird das fertige HTML der Mahlzeiten-Gruppe zurückgegeben
       return `
         <div class="space-y-1.5 pt-2 first:pt-0">
           <div class="flex items-center justify-between px-1">
-            <span class="text-[11px] font-extrabold uppercase tracking-wider text-emerald-400">${mealName}</span>
+            <div class="flex items-center gap-2">
+              <span class="text-[11px] font-extrabold uppercase tracking-wider text-emerald-400">${mealName}</span>
+              <button onclick="requestAiMealSuggestion('${mealName}')" class="text-[10px] text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 px-1.5 py-0.5 rounded flex items-center gap-1">
+                <span>✨</span><span>Vorschlag</span>
+              </button>
+            </div>
             <span class="text-[11px] font-semibold text-slate-400">${groupCal} kcal · ${groupPro.toFixed(1)}g P</span>
           </div>
           ${itemsHtml}
         </div>`;
     }).join('');
   }
-
-  renderMicrosTab(logged);
-  if (state.activeTab === 'insights') renderInsightsTab();
-}
 
 function renderMicrosTab(logged) {
   const t = state.targets.micros;
