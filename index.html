@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>NutriTracker</title>
-
+  <script src="https://unpkg.com/html5-qrcode"></script>
   <!-- PWA manifest -->
   <link rel="manifest" href="./manifest.json" />
   <meta name="theme-color" content="#090d16" />
@@ -14,6 +14,8 @@
   <meta name="apple-mobile-web-app-title" content="NutriTracker" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+  <style>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -55,6 +57,7 @@
   </style>
 </head>
 <body>
+<div class="app-shell">
 
 <!-- TOP HEADER -->
   <header class="sticky top-0 z-30 bg-[#090d16]/95 backdrop-blur-md border-b border-slate-800/80 px-4 py-3 flex items-center">
@@ -251,6 +254,11 @@
         </div>
       </div>
 
+      <button onclick="toggleBarcodeScanner()" class="w-full bg-slate-950 hover:bg-slate-800 border border-slate-800 text-sky-400 font-bold text-xs py-2 rounded-xl flex items-center justify-center gap-2">
+  <span>║▌║ Barcode scannen (OpenFoodFacts)</span>
+</button>
+<div id="barcodeReaderBox" class="hidden overflow-hidden rounded-xl border border-slate-800 bg-black"></div>
+
       <!-- Photo Preview & Analysis Card -->
       <div id="photoPreviewCard" class="hidden bg-slate-900 border border-slate-800 rounded-2xl p-3 space-y-2.5">
         <div class="relative w-full h-40 rounded-xl overflow-hidden bg-slate-950">
@@ -372,6 +380,19 @@
           <button onclick="saveApiKey()" class="bg-emerald-500 text-slate-950 font-bold text-xs px-3 py-2 rounded-xl">
             Save
           </button>
+        </div>
+      </div>
+      <!-- NEU: Backup & Restore -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2.5">
+        <span class="text-[11px] text-slate-400 block font-semibold">Daten-Backup (Lokal sichern & wiederherstellen)</span>
+        <div class="grid grid-cols-2 gap-2">
+          <button onclick="exportBackupJson()" class="bg-slate-950 hover:bg-slate-800 border border-slate-800 text-emerald-400 font-bold text-xs py-2 rounded-xl">
+            ⬇ Backup speichern
+          </button>
+          <label class="cursor-pointer bg-slate-950 hover:bg-slate-800 border border-slate-800 text-sky-400 font-bold text-xs py-2 rounded-xl text-center">
+            ⬆ Backup laden
+            <input type="file" accept=".json" class="hidden" onchange="importBackupJson(event)" />
+          </label>
         </div>
       </div>
     </section>
@@ -610,7 +631,8 @@ let state = {
   },
   loggedItems: [],
   sleepLogs: [],
-  draftItems: []
+  draftItems: [],
+  customFoods: {}
 };
 
 // Global cache for current scanned image to allow re-analysis with modified hints
@@ -624,6 +646,7 @@ function saveState() {
       profile: state.profile,
       loggedItems: state.loggedItems,
       sleepLogs: state.sleepLogs,
+      customFoods: state.customFoods,
       migrationNoticePending: state.migrationNoticePending,
       aiConsentGiven: state.aiConsentGiven
     };
@@ -646,6 +669,10 @@ function loadState() {
     if (v2Raw) {
       const parsed = JSON.parse(v2Raw);
       if (parsed.profile) state.profile = { ...state.profile, ...parsed.profile };
+      if (parsed.customFoods) {
+        state.customFoods = parsed.customFoods;
+        Object.assign(USDA_DB, state.customFoods);
+      }
       if (Array.isArray(parsed.loggedItems)) {
         state.loggedItems = parsed.loggedItems.filter(i => i && (USDA_DB[i.foodKey] || i.isCustom) && i.grams > 0).map(i => ({
           id: i.id || (Date.now() + Math.random()),
@@ -701,6 +728,34 @@ function loadState() {
   syncProfileInputsFromState();
 }
 
+function saveCustomToFavorites(itemId) {
+  const item = state.loggedItems.find(i => i.id === itemId);
+  if (!item || !item.isCustom || !item.nutrientsPer100g) return;
+
+  const key = 'custom_' + item.name.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + Date.now().toString().slice(-4);
+  const n = item.nutrientsPer100g;
+
+  const newEntry = {
+    name: `★ ${item.name}`,
+    defaultG: item.grams || 150,
+    cal: Number(n.cal) || 0,
+    pro: Number(n.pro) || 0,
+    carbs: Number(n.carbs) || 0,
+    fiber: Number(n.fiber) || 0,
+    fat: Number(n.fat) || 0,
+    sat: Number(n.sat) || 0,
+    mono: Number(n.mono) || 0,
+    poly: Number(n.poly) || 0,
+    micros: n.micros || {}
+  };
+
+  state.customFoods[key] = newEntry;
+  USDA_DB[key] = newEntry;
+  saveState();
+  renderQuickFoods();
+  showToast('In Quick Foods gespeichert!');
+}
+  
 function dismissMigrationNotice() {
   state.migrationNoticePending = false;
   saveState();
@@ -893,47 +948,72 @@ function renderApp() {
   const clearBtn = document.getElementById('clearAllBtn');
   clearBtn.classList.toggle('hidden', dayItems.length === 0);
 
-  if (dayItems.length === 0) {
+if (dayItems.length === 0) {
     mealContainer.innerHTML = `
       <div class="text-center py-5">
         <p class="text-xs text-slate-500">No food logged on ${state.selectedDate}</p>
       </div>`;
   } else {
-    mealContainer.innerHTML = dayItems.map(item => {
-      const f = getNutrientProfile(item);
-      if (!f) return '';
-      const kcal = Math.round((f.cal * item.grams) / 100);
-      const isCustom = Boolean(item.isCustom);
-      
-      let ingredientHtml = '';
-      if (isCustom && Array.isArray(item.ingredients) && item.ingredients.length > 0) {
-        const scale = item.grams / (item.baseGrams || item.grams || 1);
-        ingredientHtml = `
-          <div class="text-[10px] text-slate-400 pl-2 border-l-2 border-emerald-500/50 mt-1">
-            <span class="text-slate-300 font-semibold">Zutaten: </span>
-            ${item.ingredients.map(ing => `${escapeHtml(ing.name)} (${Math.round(ing.grams * scale)}g)`).join(', ')}
-          </div>
-        `;
-      }
+    const mealOrder = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
+    mealContainer.innerHTML = mealOrder.map(mealName => {
+      const groupItems = dayItems.filter(i => i.meal === mealName);
+      if (groupItems.length === 0) return '';
+
+      let groupCal = 0, groupPro = 0;
+      const itemsHtml = groupItems.map(item => {
+        const f = getNutrientProfile(item);
+        if (!f) return '';
+        const kcal = Math.round((f.cal * item.grams) / 100);
+        const pro = ((f.pro * item.grams) / 100).toFixed(1);
+        groupCal += kcal;
+        groupPro += Number(pro);
+        const isCustom = Boolean(item.isCustom);
+
+        let ingredientHtml = '';
+        if (isCustom && Array.isArray(item.ingredients) && item.ingredients.length > 0) {
+          const scale = item.grams / (item.baseGrams || item.grams || 1);
+          ingredientHtml = `
+            <div class="text-[10px] text-slate-400 pl-2 border-l-2 border-emerald-500/50 mt-1">
+              <span class="text-slate-300 font-semibold">Zutaten: </span>
+              ${item.ingredients.map(ing => `${escapeHtml(ing.name)} (${Math.round(ing.grams * scale)}g)`).join(', ')}
+            </div>`;
+        }
+
+        return `
+          <div class="bg-slate-950 border border-slate-800/80 rounded-xl p-2.5 space-y-1.5">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="text-xs font-bold text-white">${escapeHtml(f.name)}</span>
+                ${isCustom ? '<span class="text-[9px] font-bold text-indigo-300 bg-indigo-500/20 px-1.5 py-0.5 rounded">KI-Gericht</span>' : ''}
+              </div>
+              <div class="flex items-center gap-1">
+                ${isCustom ? `<button onclick="saveCustomToFavorites(${item.id})" title="Als Favorit speichern" class="text-amber-400 hover:text-amber-300 text-xs px-1">★</button>` : ''}
+                <button onclick="removeLoggedItem(${item.id})" class="text-slate-500 hover:text-rose-400 text-xs px-1">✕</button>
+              </div>
+            </div>
+            ${ingredientHtml}
+            <div class="flex items-center gap-2 pt-0.5">
+              <input type="range" min="1" max="${Math.max(650, item.grams * 2)}" step="1" value="${item.grams}"
+                oninput="updateLoggedGrams(${item.id}, this.value)" class="flex-1" />
+              <div class="flex items-center gap-1 shrink-0">
+                <input type="number" min="1" max="5000" value="${item.grams}"
+                  onchange="updateLoggedGrams(${item.id}, this.value)"
+                  class="w-14 bg-slate-900 border border-slate-800 rounded px-1.5 py-0.5 text-[11px] text-right font-bold text-white outline-none focus:border-emerald-500" />
+                <span class="text-[11px] text-slate-400">g ·</span>
+                <span class="text-[11px] text-slate-200 font-semibold w-14 text-right">${kcal} kcal</span>
+              </div>
+            </div>
+          </div>`;
+      }).join('');
 
       return `
-        <div class="bg-slate-950 border border-slate-800/80 rounded-xl p-2.5 space-y-1.5">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <span class="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">${item.meal}</span>
-              <span class="text-xs font-bold text-white">${escapeHtml(f.name)}</span>
-              ${isCustom ? '<span class="text-[9px] font-bold text-indigo-300 bg-indigo-500/20 px-1.5 py-0.2 rounded">KI-Gericht</span>' : ''}
-            </div>
-            <button onclick="removeLoggedItem(${item.id})" class="text-slate-500 hover:text-rose-400 text-xs px-1">✕</button>
+        <div class="space-y-1.5 pt-2 first:pt-0">
+          <div class="flex items-center justify-between px-1">
+            <span class="text-[11px] font-extrabold uppercase tracking-wider text-emerald-400">${mealName}</span>
+            <span class="text-[11px] font-semibold text-slate-400">${groupCal} kcal · ${groupPro.toFixed(1)}g P</span>
           </div>
-          ${ingredientHtml}
-          <div class="flex items-center gap-3 pt-0.5">
-            <input type="range" min="10" max="${Math.max(650, item.grams * 2)}" step="5" value="${item.grams}"
-              oninput="updateLoggedGrams(${item.id}, this.value)" class="flex-1" />
-            <span class="text-[11px] text-slate-300 w-28 text-right font-semibold">${item.grams}g · ${kcal} kcal</span>
-          </div>
-        </div>
-      `;
+          ${itemsHtml}
+        </div>`;
     }).join('');
   }
 
@@ -1004,6 +1084,78 @@ function renderQuickFoods() {
   }).join('');
 }
 
+let html5QrScanner = null;
+
+async function toggleBarcodeScanner() {
+  const box = document.getElementById('barcodeReaderBox');
+  if (!box.classList.contains('hidden')) {
+    if (html5QrScanner) await html5QrScanner.stop();
+    box.classList.add('hidden');
+    return;
+  }
+
+  box.classList.remove('hidden');
+  html5QrScanner = new Html5Qrcode('barcodeReaderBox');
+  html5QrScanner.start(
+    { facingMode: 'environment' },
+    { fps: 10, qrbox: { width: 240, height: 120 } },
+    async (barcode) => {
+      await html5QrScanner.stop();
+      box.classList.add('hidden');
+      fetchOpenFoodFacts(barcode);
+    },
+    () => {}
+  ).catch(err => {
+    box.classList.add('hidden');
+    showToast('Kamera-Zugriff fehlgeschlagen');
+  });
+}
+
+async function fetchOpenFoodFacts(barcode) {
+  showToast(`Suche Barcode ${barcode}...`);
+  try {
+    const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${barcode}.json`);
+    const data = await res.json();
+    if (data.status !== 1 || !data.product) {
+      showToast('Produkt nicht in OpenFoodFacts gefunden');
+      return;
+    }
+    const p = data.product;
+    const n = p.nutriments || {};
+    const micros = {};
+    MICRO_META.forEach(m => micros[m.key] = 0);
+    // Wichtige Mikros aus OpenFoodFacts mappen (Umrechnung g -> mg)
+    if (n.sodium_100g) micros.sodium_mg = n.sodium_100g * 1000;
+    if (n.potassium_100g) micros.potassium_mg = n.potassium_100g * 1000;
+    if (n.calcium_100g) micros.calcium_mg = n.calcium_100g * 1000;
+    if (n.magnesium_100g) micros.magnesium_mg = n.magnesium_100g * 1000;
+    if (n.iron_100g) micros.iron_mg = n.iron_100g * 1000;
+
+    state.draftItems.push({
+      foodKey: null,
+      isCustom: true,
+      name: p.product_name_de || p.product_name || `Produkt (${barcode})`,
+      grams: 100,
+      baseGrams: 100,
+      ingredients: [],
+      nutrientsPer100g: {
+        cal: Number(n['energy-kcal_100g']) || 0,
+        pro: Number(n.proteins_100g) || 0,
+        carbs: Number(n.carbohydrates_100g) || 0,
+        fiber: Number(n.fiber_100g) || 0,
+        fat: Number(n.fat_100g) || 0,
+        sat: Number(n['saturated-fat_100g']) || 0,
+        mono: 0, poly: 0,
+        micros
+      }
+    });
+    renderDraftItems();
+    showToast('Produkt gefunden!');
+  } catch (e) {
+    showToast('Fehler beim Abrufen des Barcodes');
+  }
+}
+  
 function quickLogFood(foodKey) {
   const meal = document.getElementById('mealTypeSelect').value;
   const f = USDA_DB[foodKey];
@@ -1171,7 +1323,7 @@ async function handlePhotoFileSelected(e) {
 
 // Multi-model fallback client to ensure zero 404 errors
 async function callGeminiVisionApi(apiKey, payload) {
-  const models = ['gemini-3.5-flash-lite'];
+  const models = ['gemini-3.5-flash-lite', 'gemini-3.8-flash'];
   let lastErr = null;
   for (const model of models) {
     try {
@@ -1490,65 +1642,84 @@ function closePhotoScan() {
   if (statusEl) statusEl.innerHTML = '';
 }
 
-function runNlpParser() {
-  const raw = document.getElementById('nlpInput').value.toLowerCase().trim();
+async function runNlpParser() {
+  const inputEl = document.getElementById('nlpInput');
+  const raw = inputEl.value.trim();
   if (!raw) return;
 
-  const rules = [
-    { regex: /(\d+)\s*g?\s*(?:sirloin|steak)/, key: 'sirloin_steak', def: 180 },
-    { regex: /(?:sirloin|steak)/, key: 'sirloin_steak', def: 180 },
-    { regex: /(\d+)\s*g?\s*(?:ground beef|beef)/, key: 'ground_beef', def: 150 },
-    { regex: /(?:ground beef|beef)/, key: 'ground_beef', def: 150 },
-    { regex: /(\d+)\s*g?\s*(?:olive oil|oil)/, key: 'olive_oil', def: 10 },
-    { regex: /(?:olive oil|oil)/, key: 'olive_oil', def: 10 },
-    { regex: /(\d+)\s*g?\s*(?:basmati|rice)/, key: 'basmati_rice', def: 160 },
-    { regex: /(?:basmati|rice)/, key: 'basmati_rice', def: 160 },
-    { regex: /(\d+)\s*g?\s*(?:broccoli)/, key: 'broccoli_steamed', def: 120 },
-    { regex: /(?:broccoli)/, key: 'broccoli_steamed', def: 120 },
-    { regex: /(\d+)\s*g?\s*(?:yogurt)/, key: 'greek_yogurt', def: 200 },
-    { regex: /(?:yogurt)/, key: 'greek_yogurt', def: 200 },
-    { regex: /(\d+)\s*g?\s*(?:oats|oatmeal)/, key: 'rolled_oats', def: 80 },
-    { regex: /(?:oats|oatmeal)/, key: 'rolled_oats', def: 80 },
-    { regex: /(\d+)\s*g?\s*(?:pecan)/, key: 'pecans', def: 30 },
-    { regex: /(?:pecan)/, key: 'pecans', def: 30 },
-    { regex: /(\d+)\s*g?\s*(?:blueberr)/, key: 'blueberries', def: 100 },
-    { regex: /(?:blueberr)/, key: 'blueberries', def: 100 },
-    { regex: /(\d+)\s*g?\s*(?:banana)/, key: 'banana', def: 120 },
-    { regex: /(?:banana)/, key: 'banana', def: 120 },
-    { regex: /(\d+)\s*g?\s*(?:potato)/, key: 'baked_potato', def: 220 },
-    { regex: /(?:potato)/, key: 'baked_potato', def: 220 },
-    { regex: /(\d+)\s*g?\s*(?:spinach)/, key: 'spinach_sauteed', def: 120 },
-    { regex: /(?:spinach)/, key: 'spinach_sauteed', def: 120 },
-    { regex: /(\d+)\s*g?\s*(?:avocado)/, key: 'avocado', def: 80 },
-    { regex: /(?:avocado)/, key: 'avocado', def: 80 }
-  ];
-
-  const parsed = [];
-  const seen = new Set();
-  rules.forEach(r => {
-    if (seen.has(r.key)) return;
-    const match = raw.match(r.regex);
-    if (match) {
-      seen.add(r.key);
-      parsed.push({
-        foodKey: r.key,
-        isCustom: false,
-        name: USDA_DB[r.key].name,
-        grams: match[1] ? Number(match[1]) : r.def,
-        baseGrams: match[1] ? Number(match[1]) : r.def,
-        ingredients: [],
-        nutrientsPer100g: null
-      });
-    }
-  });
-
-  if (parsed.length === 0) {
-    showToast('No matching food found');
+  const apiKey = (localStorage.getItem('nutritracker_gemini_key') || '').trim();
+  if (!apiKey) {
+    showToast('Bitte erst Gemini API-Key im Tab Goals speichern');
     return;
   }
 
-  state.draftItems = parsed;
-  renderDraftItems();
+  showToast('Analysiere Text mit KI...');
+
+  const prompt = `Zerlege diese Essenseingabe in einzelne Lebensmittel/Gerichte und schätze die Nährwerte pro 100g (inkl. aller 18 Mikronährstoffe): "${raw}"`;
+
+  const responseSchema = {
+    type: 'OBJECT',
+    properties: {
+      items: {
+        type: 'ARRAY',
+        items: {
+          type: 'OBJECT',
+          properties: {
+            name: { type: 'STRING' },
+            grams: { type: 'NUMBER' },
+            nutrientsPer100g: {
+              type: 'OBJECT',
+              properties: {
+                cal: { type: 'NUMBER' }, pro: { type: 'NUMBER' }, carbs: { type: 'NUMBER' },
+                fiber: { type: 'NUMBER' }, fat: { type: 'NUMBER' }, sat: { type: 'NUMBER' },
+                mono: { type: 'NUMBER' }, poly: { type: 'NUMBER' },
+                sodium_mg: { type: 'NUMBER' }, potassium_mg: { type: 'NUMBER' }, magnesium_mg: { type: 'NUMBER' },
+                calcium_mg: { type: 'NUMBER' }, iron_mg: { type: 'NUMBER' }, zinc_mg: { type: 'NUMBER' },
+                phosphorus_mg: { type: 'NUMBER' }, vit_a_mcg: { type: 'NUMBER' }, vit_c_mg: { type: 'NUMBER' },
+                vit_d_mcg: { type: 'NUMBER' }, vit_e_mg: { type: 'NUMBER' }, vit_k_mcg: { type: 'NUMBER' },
+                vit_b1_mg: { type: 'NUMBER' }, vit_b2_mg: { type: 'NUMBER' }, vit_b3_mg: { type: 'NUMBER' },
+                vit_b6_mg: { type: 'NUMBER' }, vit_b9_mcg: { type: 'NUMBER' }, vit_b12_mcg: { type: 'NUMBER' }
+              },
+              required: ['cal', 'pro', 'carbs', 'fiber', 'fat', 'sat']
+            }
+          },
+          required: ['name', 'grams', 'nutrientsPer100g']
+        }
+      }
+    },
+    required: ['items']
+  };
+
+  try {
+    const res = await callGeminiVisionApi(apiKey, {
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0.1,
+        responseMimeType: 'application/json',
+        responseSchema
+      }
+    });
+
+    const parsed = JSON.parse(res.candidates[0].content.parts[0].text);
+    state.draftItems = (parsed.items || []).map(item => {
+      const n100 = item.nutrientsPer100g || {};
+      const micros = {};
+      MICRO_META.forEach(m => micros[m.key] = Number(n100[m.key]) || 0);
+      const g = Math.max(5, Math.round(Number(item.grams) || 100));
+      return {
+        foodKey: null,
+        isCustom: true,
+        name: item.name,
+        grams: g,
+        baseGrams: g,
+        ingredients: [],
+        nutrientsPer100g: { ...n100, micros }
+      };
+    });
+    renderDraftItems();
+  } catch (err) {
+    showToast('Fehler: ' + err.message);
+  }
 }
 
 function renderDraftItems() {
@@ -2254,6 +2425,39 @@ function showToast(msg) {
   banner.textContent = msg;
   banner.classList.remove('hidden');
   setTimeout(() => banner.classList.add('hidden'), 1600);
+}
+
+  function exportBackupJson() {
+  const dataStr = localStorage.getItem(STORAGE_KEY) || JSON.stringify(state);
+  const blob = new Blob([dataStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `nutritracker-backup-${getLocalDateStr()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('Backup heruntergeladen');
+}
+
+function importBackupJson(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const parsed = JSON.parse(e.target.result);
+      if (!parsed.profile && !parsed.loggedItems) throw new Error('Ungültiges Format');
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+      loadState();
+      recalculateTargets();
+      renderQuickFoods();
+      renderApp();
+      showToast('Backup erfolgreich geladen!');
+    } catch (err) {
+      showToast('Backup-Datei ungültig');
+    }
+  };
+  reader.readAsText(file);
 }
 
 // =====================================================
