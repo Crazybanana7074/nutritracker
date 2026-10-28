@@ -1097,7 +1097,13 @@ const isSupp = Boolean(item.isSupplement);
                 ${isCustom && !isSupp ? '<span class="text-[9px] font-bold text-indigo-300 bg-indigo-500/20 px-1.5 py-0.5 rounded">KI-Gericht</span>' : ''}
                 ${isSupp ? '<span class="text-[9px] font-bold text-emerald-300 bg-emerald-500/20 px-1.5 py-0.5 rounded">Supplement</span>' : ''}
               </div>
-              <div class="flex items-center gap-1">
+              <div class="flex items-center gap-1.5">
+                <select onchange="updateLoggedMeal(${item.id}, this.value)" class="bg-slate-900 border border-slate-800 text-[10px] text-slate-300 font-semibold rounded-lg px-1.5 py-0.5 outline-none cursor-pointer">
+                  <option value="Breakfast" ${item.meal === 'Breakfast' ? 'selected' : ''}>Breakfast</option>
+                  <option value="Lunch" ${item.meal === 'Lunch' ? 'selected' : ''}>Lunch</option>
+                  <option value="Dinner" ${item.meal === 'Dinner' ? 'selected' : ''}>Dinner</option>
+                  <option value="Snack" ${item.meal === 'Snack' ? 'selected' : ''}>Snack</option>
+                </select>
                 ${favBtnHtml}
                 <button onclick="removeLoggedItem(${item.id})" class="text-slate-500 hover:text-rose-400 text-xs px-1">✕</button>
               </div>
@@ -1171,43 +1177,157 @@ function renderMicrosTab(logged) {
 // 5. ADD FOOD (SEARCH, QUICK TAP & SMART PHOTO SCAN)
 // =====================================================
 function renderQuickFoods() {
-  const q = (document.getElementById('quickFilterInput')?.value || '').toLowerCase();
-  let entries = Object.entries(USDA_DB).filter(([_, f]) => f.name.toLowerCase().includes(q));
+  const q = (document.getElementById('quickFilterInput')?.value || '').toLowerCase().trim();
+  const listEl = document.getElementById('quickFoodList');
+  if (!listEl) return;
 
-  // Eigene Favoriten immer nach ganz oben sortieren
-  entries.sort(([keyA, a], [keyB, b]) => {
-    const isFavA = Boolean(state.customFoods && state.customFoods[keyA]);
-    const isFavB = Boolean(state.customFoods && state.customFoods[keyB]);
-    if (isFavA && !isFavB) return -1;
-    if (!isFavA && isFavB) return 1;
-    return a.name.localeCompare(b.name);
+  // 1. Favoriten aus customFoods holen
+  const favItems = Object.entries(state.customFoods || {}).map(([key, f]) => {
+    const defaultG = f.defaultG || 100;
+    const kcal = Math.round((f.cal * defaultG) / 100);
+    const pro = ((f.pro * defaultG) / 100).toFixed(1);
+    return {
+      type: 'favorite',
+      key,
+      name: f.name.replace(/^★\s*/, ''),
+      grams: defaultG,
+      kcal,
+      pro,
+      isSupp: Boolean(f.isSupplement)
+    };
   });
 
-  document.getElementById('quickFoodList').innerHTML = entries.map(([key, f]) => {
-    const kcal = Math.round((f.cal * f.defaultG) / 100);
-    const isCustom = Boolean(state.customFoods && state.customFoods[key]);
+  // 2. Verlauf aus geloggten Items zusammenstellen (dedupliziert nach Name, neueste zuerst)
+  const historyItems = [];
+  const seenNames = new Set(favItems.map(f => f.name.toLowerCase()));
 
+  for (let i = state.loggedItems.length - 1; i >= 0; i--) {
+    const item = state.loggedItems[i];
+    const cleanName = item.name.replace(/^★\s*/, '').trim();
+    const cleanLower = cleanName.toLowerCase();
+
+    if (!seenNames.has(cleanLower)) {
+      seenNames.add(cleanLower);
+      const f = getNutrientProfile(item);
+      const isSupp = Boolean(item.isSupplement);
+      const kcal = f ? Math.round((f.cal * item.grams) / (isSupp ? 1 : 100)) : 0;
+      const pro = f ? ((f.pro * item.grams) / (isSupp ? 1 : 100)).toFixed(1) : '0.0';
+
+      historyItems.push({
+        type: 'history',
+        sourceId: item.id,
+        name: cleanName,
+        grams: item.grams,
+        kcal,
+        pro,
+        isSupp
+      });
+    }
+  }
+
+  // Zusammenführen und filtern
+  let combined = [...favItems, ...historyItems];
+  if (q) {
+    combined = combined.filter(item => item.name.toLowerCase().includes(q));
+  }
+
+  if (combined.length === 0) {
+    listEl.innerHTML = `
+      <div class="text-center py-6 text-xs text-slate-500">
+        ${q ? 'Keine passenden Favoriten oder Einträge gefunden.' : 'Noch keine Favoriten oder Einträge im Verlauf.'}
+      </div>`;
+    return;
+  }
+
+  listEl.innerHTML = combined.map(item => {
+    const isFav = item.type === 'favorite';
     return `
-      <div class="flex items-center justify-between bg-slate-950 border ${isCustom ? 'border-amber-500/30 bg-amber-500/5' : 'border-slate-800/80'} rounded-xl px-3 py-2">
+      <div class="flex items-center justify-between bg-slate-950 border ${isFav ? 'border-amber-500/30 bg-amber-500/5' : 'border-slate-800/80'} rounded-xl px-3 py-2">
         <div class="flex-1 pr-2">
-          <div class="flex items-center gap-1.5">
-            <span class="text-xs font-bold ${isCustom ? 'text-amber-300' : 'text-white'}">${escapeHtml(f.name)}</span>
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <span class="text-xs font-bold ${isFav ? 'text-amber-300' : 'text-white'}">${escapeHtml(item.name)}</span>
+            <span class="text-[9px] font-semibold px-1.5 py-0.5 rounded ${isFav ? 'text-amber-400 bg-amber-500/20' : 'text-slate-400 bg-slate-800'}">
+              ${isFav ? '★ Favorit' : '🕒 Verlauf'}
+            </span>
+            ${item.isSupp ? '<span class="text-[9px] font-bold text-emerald-300 bg-emerald-500/20 px-1 py-0.5 rounded">Supplement</span>' : ''}
           </div>
-          <div class="text-[10px] text-slate-400">${f.defaultG}g · ${kcal} kcal · ${((f.pro * f.defaultG)/100).toFixed(1)}g P</div>
+          <div class="text-[10px] text-slate-400 mt-0.5">
+            ${item.grams}${item.isSupp ? ' Kapsel(n)' : 'g'} · ${item.kcal} kcal · ${item.pro}g P
+          </div>
         </div>
         <div class="flex items-center gap-1.5 shrink-0">
-          ${isCustom ? `
-            <button onclick="deleteFavorite('${key}')" title="Favorit entfernen" class="text-slate-500 hover:text-rose-400 text-xs p-1">
+          ${isFav ? `
+            <button onclick="deleteFavorite('${item.key}')" title="Favorit löschen" class="text-slate-500 hover:text-rose-400 text-xs p-1">
               ✕
             </button>
-          ` : ''}
-          <button onclick="quickLogFood('${key}')" class="bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 font-bold text-xs px-2.5 py-1 rounded-lg">
-            + Add
-          </button>
+            <button onclick="quickLogFavorite('${item.key}')" class="bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 font-bold text-xs px-2.5 py-1 rounded-lg">
+              + Add
+            </button>
+          ` : `
+            <button onclick="quickLogFromHistory(${item.sourceId})" class="bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 font-bold text-xs px-2.5 py-1 rounded-lg">
+              + Add
+            </button>
+          `}
         </div>
       </div>
     `;
   }).join('');
+}
+
+function quickLogFavorite(key) {
+  const f = state.customFoods[key] || USDA_DB[key];
+  if (!f) return;
+  const meal = document.getElementById('mealTypeSelect').value;
+
+  state.loggedItems.push({
+    id: Date.now() + Math.random(),
+    date: state.selectedDate,
+    createdAt: Date.now(),
+    meal,
+    foodKey: key,
+    isCustom: true,
+    isSupplement: Boolean(f.isSupplement),
+    name: f.name.replace(/^★\s*/, ''),
+    grams: f.defaultG || 100,
+    baseGrams: f.defaultG || 100,
+    ingredients: [],
+    nutrientsPer100g: {
+      cal: f.cal, pro: f.pro, carbs: f.carbs, fiber: f.fiber || 0,
+      fat: f.fat, sat: f.sat || 0, mono: f.mono || 0, poly: f.poly || 0,
+      micros: f.micros || {}
+    }
+  });
+
+  saveState();
+  renderApp();
+  renderQuickFoods();
+  showToast(`Zu ${meal} hinzugefügt`);
+}
+
+function quickLogFromHistory(sourceId) {
+  const src = state.loggedItems.find(i => i.id === sourceId);
+  if (!src) return;
+  const meal = document.getElementById('mealTypeSelect').value;
+
+  state.loggedItems.push({
+    id: Date.now() + Math.random(),
+    date: state.selectedDate,
+    createdAt: Date.now(),
+    meal,
+    foodKey: src.foodKey || null,
+    isCustom: Boolean(src.isCustom),
+    isSupplement: Boolean(src.isSupplement),
+    name: src.name.replace(/^★\s*/, ''),
+    grams: src.grams,
+    baseGrams: src.baseGrams || src.grams,
+    ingredients: src.ingredients ? JSON.parse(JSON.stringify(src.ingredients)) : [],
+    nutrientsPer100g: src.nutrientsPer100g ? JSON.parse(JSON.stringify(src.nutrientsPer100g)) : null
+  });
+
+  saveState();
+  renderApp();
+  renderQuickFoods();
+  showToast(`Zu ${meal} hinzugefügt`);
 }
 
 let html5QrScanner = null;
@@ -1282,26 +1402,7 @@ async function fetchOpenFoodFacts(barcode) {
   }
 }
   
-function quickLogFood(foodKey) {
-  const meal = document.getElementById('mealTypeSelect').value;
-  const f = USDA_DB[foodKey];
-  state.loggedItems.push({
-    id: Date.now() + Math.random(),
-    date: state.selectedDate,
-    createdAt: Date.now(),
-    meal,
-    foodKey,
-    isCustom: false,
-    name: f.name,
-    grams: f.defaultG,
-    baseGrams: f.defaultG,
-    ingredients: [],
-    nutrientsPer100g: null
-  });
-  saveState();
-  renderApp();
-  showToast(`Added to ${state.selectedDate}`);
-}
+
 
 const SUPPORTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
 
@@ -1935,26 +2036,6 @@ function renderDraftItems() {
         </div>
         ${ingHtml}
         ${controlHtml}
-      </div>
-    `;
-  }).join('');
-}
-
-    return `
-      <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 space-y-1.5">
-        <div class="flex justify-between items-center text-xs">
-          <div class="flex items-center gap-1.5">
-            <span class="font-bold text-white">${escapeHtml(name)}</span>
-            ${isCustom ? '<span class="text-[9px] font-bold text-indigo-300 bg-indigo-500/20 px-1.5 py-0.5 rounded">KI-Schätzung</span>' : ''}
-          </div>
-          <button onclick="removeDraftItem(${idx})" class="text-slate-500 hover:text-rose-400 text-xs px-1">✕</button>
-        </div>
-        ${ingHtml}
-        <div class="flex items-center gap-3 pt-1">
-          <input type="range" min="10" max="${maxG}" step="5" value="${item.grams}"
-            oninput="updateDraftGrams(${idx}, this.value)" class="flex-1" />
-          <span class="text-[11px] font-bold text-emerald-400 w-28 text-right">${item.grams}g · ${kcal} kcal</span>
-        </div>
       </div>
     `;
   }).join('');
@@ -2730,6 +2811,16 @@ function recalculateTargets() {
 
   saveState();
   renderApp();
+}
+
+  function updateLoggedMeal(id, newMeal) {
+  const item = state.loggedItems.find(i => i.id === id);
+  if (item) {
+    item.meal = newMeal;
+    saveState();
+    renderApp();
+    showToast(`Zu ${newMeal} verschoben`);
+  }
 }
 
 function updateLoggedGrams(id, val) {
