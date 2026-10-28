@@ -1875,10 +1875,11 @@ function renderDraftItems() {
 
   document.getElementById('draftItemsList').innerHTML = state.draftItems.map((item, idx) => {
     const isCustom = Boolean(item.isCustom);
+    const isSupp = Boolean(item.isSupplement);
     const f = isCustom ? item.nutrientsPer100g : USDA_DB[item.foodKey];
     const name = isCustom ? item.name : (f ? f.name : 'Food');
     const calPer100 = f ? f.cal : 0;
-    const kcal = Math.round((calPer100 * item.grams) / 100);
+    const kcal = Math.round((calPer100 * item.grams) / (isSupp ? 1 : 100));
     const maxG = Math.max(650, item.grams * 2);
 
     let ingHtml = '';
@@ -1896,6 +1897,48 @@ function renderDraftItems() {
         </div>
       `;
     }
+
+    // Für Supplements: Kapsel-Minus/Plus-Steuerung; für Essen: Slider
+    let controlHtml = '';
+    if (isSupp) {
+      const mgMg = Math.round((f?.micros?.magnesium_mg || f?.magnesium_mg || 0) * item.grams);
+      controlHtml = `
+        <div class="flex items-center justify-between pt-1">
+          <span class="text-[11px] text-slate-400">Anzahl (${mgMg > 0 ? `${mgMg} mg Magnesium` : 'Dosis'}):</span>
+          <div class="flex items-center gap-2">
+            <button onclick="updateDraftGrams(${idx}, Math.max(1, ${item.grams} - 1))" class="w-7 h-7 bg-slate-900 border border-slate-800 rounded-lg text-xs font-bold text-white hover:bg-slate-800">-</button>
+            <span class="text-xs font-bold text-emerald-400">${item.grams}x Kapsel/Tablette</span>
+            <button onclick="updateDraftGrams(${idx}, ${item.grams} + 1)" class="w-7 h-7 bg-slate-900 border border-slate-800 rounded-lg text-xs font-bold text-white hover:bg-slate-800">+</button>
+          </div>
+        </div>
+      `;
+    } else {
+      controlHtml = `
+        <div class="flex items-center gap-3 pt-1">
+          <input type="range" min="10" max="${maxG}" step="5" value="${item.grams}"
+            oninput="updateDraftGrams(${idx}, this.value)" class="flex-1" />
+          <span class="text-[11px] font-bold text-emerald-400 w-28 text-right">${item.grams}g · ${kcal} kcal</span>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 space-y-1.5">
+        <div class="flex justify-between items-center text-xs">
+          <div class="flex items-center gap-1.5">
+            <span class="font-bold text-white">${escapeHtml(name)}</span>
+            ${isSupp 
+              ? '<span class="text-[9px] font-bold text-emerald-300 bg-emerald-500/20 px-1.5 py-0.5 rounded">Supplement</span>'
+              : (isCustom ? '<span class="text-[9px] font-bold text-indigo-300 bg-indigo-500/20 px-1.5 py-0.5 rounded">KI-Schätzung</span>' : '')}
+          </div>
+          <button onclick="removeDraftItem(${idx})" class="text-slate-500 hover:text-rose-400 text-xs px-1">✕</button>
+        </div>
+        ${ingHtml}
+        ${controlHtml}
+      </div>
+    `;
+  }).join('');
+}
 
     return `
       <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 space-y-1.5">
