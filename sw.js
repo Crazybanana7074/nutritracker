@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nutritracker-pwa-v1.3.4';
+const CACHE_NAME = 'nutritracker-pwa-v1.4.0';
 const APP_SHELL = [
   './',
   './index.html',
