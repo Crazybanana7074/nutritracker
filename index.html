@@ -615,6 +615,9 @@ function formatShortRange(startStr, endStr) {
   return `${sFmt} – ${eFmt}`;
 }
 
+let activeMergeMeal = null;
+let selectedMergeIds = new Set();
+
 let state = {
   schemaVersion: 2,
   activeTab: 'today',
@@ -919,7 +922,148 @@ function getStatusColor(logged, target, isCap = false) {
 // =====================================================
 // 4. RENDER UI
 // =====================================================
-function renderApp() {
+function toggleMergeMode(mealName) {
+  if (activeMergeMeal === mealName) {
+    activeMergeMeal = null;
+    selectedMergeIds.clear();
+  } else {
+    activeMergeMeal = mealName;
+    selectedMergeIds.clear();
+  }
+  renderApp();
+}
+
+function toggleItemForMerge(id) {
+  if (selectedMergeIds.has(id)) {
+    selectedMergeIds.delete(id);
+  } else {
+    selectedMergeIds.add(id);
+  }
+  renderApp();
+}
+
+function submitMerge() {
+  if (selectedMergeIds.size < 2) {
+    showToast('Wähle mindestens 2 Einträge aus');
+    return;
+  }
+  const defaultTitle = state.loggedItems
+    .filter(i => selectedMergeIds.has(i.id))
+    .map(i => i.name.replace(/^★\s*/, ''))
+    .join(' mit ');
+
+  const name = prompt('Name für das kombinierte Gericht:', defaultTitle);
+  if (name !== null && name.trim() !== '') {
+    const ids = Array.from(selectedMergeIds);
+    activeMergeMeal = null;
+    selectedMergeIds.clear();
+    mergeSelectedItems(ids, name.trim());
+  }
+}
+
+function mergeSelectedItems(itemIds, customName) {
+  const itemsToMerge = state.loggedItems.filter(i => itemIds.includes(i.id));
+  if (itemsToMerge.length < 2) return;
+
+  const totalGrams = itemsToMerge.reduce((sum, item) => sum + (Number(item.grams) || 0), 0);
+  if (totalGrams <= 0) return;
+
+  let totalCal = 0, totalPro = 0, totalCarbs = 0, totalFiber = 0;
+  let totalFat = 0, totalSat = 0, totalMono = 0, totalPoly = 0;
+  
+  const totalMicros = {};
+  MICRO_META.forEach(m => totalMicros[m.key] = 0);
+
+  const combinedIngredients = [];
+
+  itemsToMerge.forEach(item => {
+    const f = getNutrientProfile(item);
+    if (!f) return;
+
+    const scale = f.isSupplement ? (item.grams || 1) : (item.grams / 100.0);
+    const itemCal = f.cal * scale;
+    const itemPro = f.pro * scale;
+    const itemCarbs = f.carbs * scale;
+    const itemFat = f.fat * scale;
+
+    totalCal += itemCal;
+    totalPro += itemPro;
+    totalCarbs += itemCarbs;
+    totalFiber += (f.fiber || 0) * scale;
+    totalFat += itemFat;
+    totalSat += (f.sat || 0) * scale;
+    totalMono += (f.mono || 0) * scale;
+    totalPoly += (f.poly || 0) * scale;
+
+    MICRO_META.forEach(m => {
+      totalMicros[m.key] += (f.micros[m.key] || 0) * scale;
+    });
+
+    if (item.isCustom && Array.isArray(item.ingredients) && item.ingredients.length > 0) {
+      const origScale = item.grams / (item.baseGrams || item.grams || 1);
+      item.ingredients.forEach(sub => {
+        combinedIngredients.push({
+          name: sub.name,
+          grams: Math.round(sub.grams * origScale),
+          cal: Math.round((sub.cal || 0) * origScale),
+          pro: Number(((sub.pro || 0) * origScale).toFixed(1)),
+          carbs: Number(((sub.carbs || 0) * origScale).toFixed(1)),
+          fat: Number(((sub.fat || 0) * origScale).toFixed(1))
+        });
+      });
+    } else {
+      combinedIngredients.push({
+        name: item.name.replace(/^★\s*/, ''),
+        grams: Math.round(item.grams),
+        cal: Math.round(itemCal),
+        pro: Number(itemPro.toFixed(1)),
+        carbs: Number(itemCarbs.toFixed(1)),
+        fat: Number(itemFat.toFixed(1))
+      });
+    }
+  });
+
+  const factor = 100 / totalGrams;
+  const mergedMicros = {};
+  MICRO_META.forEach(m => {
+    mergedMicros[m.key] = Number((totalMicros[m.key] * factor).toFixed(2));
+  });
+
+  const first = itemsToMerge[0];
+  const mergedDish = {
+    id: Date.now() + Math.random(),
+    date: first.date,
+    createdAt: Date.now(),
+    meal: first.meal,
+    foodKey: null,
+    isCustom: true,
+    isSupplement: false,
+    name: customName,
+    grams: Math.round(totalGrams),
+    baseGrams: Math.round(totalGrams),
+    ingredients: combinedIngredients,
+    nutrientsPer100g: {
+      cal: Math.round(totalCal * factor),
+      pro: Number((totalPro * factor).toFixed(1)),
+      carbs: Number((totalCarbs * factor).toFixed(1)),
+      fiber: Number((totalFiber * factor).toFixed(1)),
+      fat: Number((totalFat * factor).toFixed(1)),
+      sat: Number((totalSat * factor).toFixed(1)),
+      mono: Number((totalMono * factor).toFixed(1)),
+      poly: Number((totalPoly * factor).toFixed(1)),
+      micros: mergedMicros
+    }
+  };
+
+  state.loggedItems = state.loggedItems.filter(i => !itemIds.includes(i.id));
+  state.loggedItems.push(mergedDish);
+
+  saveState();
+  renderApp();
+  showToast('Gericht zusammengefasst!');
+}
+  
+  function renderApp() {
   const today = getLocalDateStr();
   const isToday = state.selectedDate === today;
 
@@ -1017,7 +1161,7 @@ if (dayItems.length === 0) {
         <p class="text-xs text-slate-500">No food logged on ${state.selectedDate}</p>
       </div>`;
   } else {
-    const mealOrder = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
+const mealOrder = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
 
     mealContainer.innerHTML = mealOrder.map(mealName => {
       const groupItems = dayItems.filter(i => i.meal === mealName);
@@ -1025,8 +1169,8 @@ if (dayItems.length === 0) {
 
       let groupCal = 0;
       let groupPro = 0;
+      const isMergeActive = activeMergeMeal === mealName;
 
-      // 1. JavaScript-Logik VOR den Backticks ausführen
       const itemsHtml = groupItems.map(item => {
         const f = getNutrientProfile(item);
         if (!f) return '';
@@ -1038,6 +1182,8 @@ if (dayItems.length === 0) {
 
         const isCustom = Boolean(item.isCustom);
         const isFav = Boolean(getFavoriteKeyByName(item.name));
+        const isSupp = Boolean(item.isSupplement);
+        const isChecked = selectedMergeIds.has(item.id);
 
         let ingredientHtml = '';
         if (isCustom && Array.isArray(item.ingredients) && item.ingredients.length > 0) {
@@ -1057,11 +1203,8 @@ if (dayItems.length === 0) {
           </button>
         `;
 
-const isSupp = Boolean(item.isSupplement);
-
         let amountControlHtml = '';
         if (isSupp) {
-          // Zeigt z. B. "1 Kapsel" oder "2 Kapseln" mit Minus / Plus
           amountControlHtml = `
             <div class="flex items-center justify-between pt-1">
               <span class="text-[11px] text-slate-400">Dosis:</span>
@@ -1073,7 +1216,6 @@ const isSupp = Boolean(item.isSupplement);
             </div>
           `;
         } else {
-          // Normaler Gramm-Slider für Mahlzeiten
           amountControlHtml = `
             <div class="flex items-center gap-2 pt-0.5">
               <input type="range" min="1" max="${Math.max(650, item.grams * 2)}" step="1" value="${item.grams}"
@@ -1088,16 +1230,21 @@ const isSupp = Boolean(item.isSupplement);
             </div>
           `;
         }
-        
- return `
-          <div class="bg-slate-950 border border-slate-800/80 rounded-xl p-2.5 space-y-1.5">
+
+        const checkboxHtml = isMergeActive ? `
+          <input type="checkbox" onchange="toggleItemForMerge(${item.id})" ${isChecked ? 'checked' : ''} class="w-4 h-4 accent-emerald-500 rounded cursor-pointer mr-2 shrink-0" />
+        ` : '';
+
+        return `
+          <div class="bg-slate-950 border ${isChecked ? 'border-emerald-500/60 bg-emerald-500/5' : 'border-slate-800/80'} rounded-xl p-2.5 space-y-1.5 transition-colors">
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-1.5 flex-wrap">
+                ${checkboxHtml}
                 <span class="text-xs font-bold text-white">${escapeHtml(f.name)}</span>
                 ${isCustom && !isSupp ? '<span class="text-[9px] font-bold text-indigo-300 bg-indigo-500/20 px-1.5 py-0.5 rounded">KI-Gericht</span>' : ''}
                 ${isSupp ? '<span class="text-[9px] font-bold text-emerald-300 bg-emerald-500/20 px-1.5 py-0.5 rounded">Supplement</span>' : ''}
               </div>
-              <div class="flex items-center gap-1.5">
+              <div class="flex items-center gap-1">
                 <select onchange="updateLoggedMeal(${item.id}, this.value)" class="bg-slate-900 border border-slate-800 text-[10px] text-slate-300 font-semibold rounded-lg px-1.5 py-0.5 outline-none cursor-pointer">
                   <option value="Breakfast" ${item.meal === 'Breakfast' ? 'selected' : ''}>Breakfast</option>
                   <option value="Lunch" ${item.meal === 'Lunch' ? 'selected' : ''}>Lunch</option>
@@ -1112,6 +1259,33 @@ const isSupp = Boolean(item.isSupplement);
             ${amountControlHtml}
           </div>`;
       }).join('');
+
+      return `
+        <div class="space-y-1.5 pt-2 first:pt-0">
+          <div class="flex items-center justify-between px-1">
+            <div class="flex items-center gap-1.5">
+              <span class="text-[11px] font-extrabold uppercase tracking-wider text-emerald-400">${mealName}</span>
+              ${groupItems.length >= 2 ? `
+                <button onclick="toggleMergeMode('${mealName}')" class="text-[10px] ${isMergeActive ? 'text-amber-300 bg-amber-500/20 border-amber-500/40' : 'text-slate-400 bg-slate-950 hover:text-white border-slate-800'} border px-1.5 py-0.5 rounded">
+                  ${isMergeActive ? 'Abbrechen' : '🔗 Verbinden'}
+                </button>
+              ` : ''}
+              <button onclick="requestAiMealSuggestion('${mealName}')" class="text-[10px] text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 px-1.5 py-0.5 rounded flex items-center gap-1">
+                <span>✨</span><span>Vorschlag</span>
+              </button>
+            </div>
+            <span class="text-[11px] font-semibold text-slate-400">${groupCal} kcal · ${groupPro.toFixed(1)}g P</span>
+          </div>
+          ${itemsHtml}
+          ${isMergeActive && selectedMergeIds.size >= 2 ? `
+            <div class="pt-1">
+              <button onclick="submitMerge()" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs py-2 rounded-xl transition shadow-lg">
+                ${selectedMergeIds.size} Einträge als ein Gericht zusammenfassen
+              </button>
+            </div>
+          ` : ''}
+        </div>`;
+    }).join('');
 
       // 2. Erst hier wird das fertige HTML der Mahlzeiten-Gruppe zurückgegeben
       return `
@@ -2262,6 +2436,101 @@ function logSuggestedMeal(idx) {
 
 function closeSuggestionModal() {
   document.getElementById('aiMealSuggestionModal').classList.add('hidden');
+}
+
+  function mergeSelectedItems(itemIds, customName) {
+  const itemsToMerge = state.loggedItems.filter(i => itemIds.includes(i.id));
+  if (itemsToMerge.length < 2) return;
+
+  const totalGrams = itemsToMerge.reduce((sum, item) => sum + (Number(item.grams) || 0), 0);
+  if (totalGrams <= 0) return;
+
+  let totalCal = 0, totalPro = 0, totalCarbs = 0, totalFiber = 0;
+  let totalFat = 0, totalSat = 0, totalMono = 0, totalPoly = 0;
+  
+  const totalMicros = {};
+  MICRO_META.forEach(m => totalMicros[m.key] = 0);
+
+  const combinedIngredients = [];
+
+  itemsToMerge.forEach(item => {
+    const f = getNutrientProfile(item);
+    if (!f) return;
+
+    const scale = f.isSupplement ? (item.grams || 1) : (item.grams / 100.0);
+    const itemCal = f.cal * scale;
+    const itemPro = f.pro * scale;
+    const itemCarbs = f.carbs * scale;
+    const itemFat = f.fat * scale;
+
+    totalCal += itemCal;
+    totalPro += itemPro;
+    totalCarbs += itemCarbs;
+    totalFiber += (f.fiber || 0) * scale;
+    totalFat += itemFat;
+    totalSat += (f.sat || 0) * scale;
+    totalMono += (f.mono || 0) * scale;
+    totalPoly += (f.poly || 0) * scale;
+
+    MICRO_META.forEach(m => {
+      totalMicros[m.key] += (f.micros[m.key] || 0) * scale;
+    });
+
+    // Zutaten für die Anzeige übernehmen
+    if (item.isCustom && Array.isArray(item.ingredients) && item.ingredients.length > 0) {
+      combinedIngredients.push(...item.ingredients);
+    } else {
+      combinedIngredients.push({
+        name: item.name.replace(/^★\s*/, ''),
+        grams: Math.round(item.grams),
+        cal: Math.round(itemCal),
+        pro: Number(itemPro.toFixed(1)),
+        carbs: Number(itemCarbs.toFixed(1)),
+        fat: Number(itemFat.toFixed(1))
+      });
+    }
+  });
+
+  // Auf 100g des neuen Gesamtgerichts normieren
+  const factor = 100 / totalGrams;
+  const mergedMicros = {};
+  MICRO_META.forEach(m => {
+    mergedMicros[m.key] = Number((totalMicros[m.key] * factor).toFixed(2));
+  });
+
+  const first = itemsToMerge[0];
+  const mergedDish = {
+    id: Date.now() + Math.random(),
+    date: first.date,
+    createdAt: Date.now(),
+    meal: first.meal,
+    foodKey: null,
+    isCustom: true,
+    isSupplement: false,
+    name: customName || itemsToMerge.map(i => i.name.replace(/^★\s*/, '')).join(' mit '),
+    grams: Math.round(totalGrams),
+    baseGrams: Math.round(totalGrams),
+    ingredients: combinedIngredients,
+    nutrientsPer100g: {
+      cal: Math.round(totalCal * factor),
+      pro: Number((totalPro * factor).toFixed(1)),
+      carbs: Number((totalCarbs * factor).toFixed(1)),
+      fiber: Number((totalFiber * factor).toFixed(1)),
+      fat: Number((totalFat * factor).toFixed(1)),
+      sat: Number((totalSat * factor).toFixed(1)),
+      mono: Number((totalMono * factor).toFixed(1)),
+      poly: Number((totalPoly * factor).toFixed(1)),
+      micros: mergedMicros
+    }
+  };
+
+  // Alte Elemente entfernen und neues Gericht einsetzen
+  state.loggedItems = state.loggedItems.filter(i => !itemIds.includes(i.id));
+  state.loggedItems.push(mergedDish);
+
+  saveState();
+  renderApp();
+  showToast('Gericht erfolgreich zusammengefasst!');
 }
 
 // =====================================================
