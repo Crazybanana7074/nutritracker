@@ -1,0 +1,57 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #020617;
+      color: #f8fafc;
+      margin: 0;
+      padding: 0;
+      overscroll-behavior-y: none;
+    }
+    .app-shell {
+      width: 100%;
+      max-width: 430px;
+      min-height: 100dvh;
+      margin: 0 auto;
+      background-color: #090d16;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      border-left: 1px solid #1e293b;
+      border-right: 1px solid #1e293b;
+    }
+    .scroll-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px 14px 88px 14px;
+    }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    input[type="range"] {
+      accent-color: #10b981;
+      height: 5px;
+      border-radius: 999px;
+    }
+    .ring-transition {
+      transition: stroke-dashoffset 0.4s ease, stroke 0.3s ease;
+    }
+
+
+/* Interaction polish and accessibility */
+:root { color-scheme: dark; }
+button, input, select, textarea { touch-action: manipulation; }
+button { transition: transform 120ms ease, background-color 150ms ease, color 150ms ease, border-color 150ms ease; }
+button:active:not(:disabled) { transform: scale(0.985); }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid #34d399;
+  outline-offset: 2px;
+}
+button:disabled { cursor: not-allowed; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
