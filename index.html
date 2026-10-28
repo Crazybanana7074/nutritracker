@@ -693,7 +693,7 @@ function loadState() {
         state.customFoods = parsed.customFoods;
         Object.assign(USDA_DB, state.customFoods);
       }
-      if (Array.isArray(parsed.loggedItems)) {
+if (Array.isArray(parsed.loggedItems)) {
         state.loggedItems = parsed.loggedItems.filter(i => i && (USDA_DB[i.foodKey] || i.isCustom) && i.grams > 0).map(i => ({
           id: i.id || (Date.now() + Math.random()),
           date: typeof i.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(i.date) ? i.date : today,
@@ -701,6 +701,7 @@ function loadState() {
           meal: i.meal || 'Snack',
           foodKey: i.foodKey || null,
           isCustom: Boolean(i.isCustom),
+          isSupplement: Boolean(i.isSupplement), // <--- NEU EINGEFÜGT
           name: i.name || (i.foodKey && USDA_DB[i.foodKey] ? USDA_DB[i.foodKey].name : 'Food'),
           grams: Number(i.grams) || 100,
           baseGrams: Number(i.baseGrams) || Number(i.grams) || 100,
@@ -1088,12 +1089,13 @@ const isSupp = Boolean(item.isSupplement);
           `;
         }
         
-        return `
+ return `
           <div class="bg-slate-950 border border-slate-800/80 rounded-xl p-2.5 space-y-1.5">
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-1.5 flex-wrap">
                 <span class="text-xs font-bold text-white">${escapeHtml(f.name)}</span>
-                ${isCustom ? '<span class="text-[9px] font-bold text-indigo-300 bg-indigo-500/20 px-1.5 py-0.5 rounded">KI-Gericht</span>' : ''}
+                ${isCustom && !isSupp ? '<span class="text-[9px] font-bold text-indigo-300 bg-indigo-500/20 px-1.5 py-0.5 rounded">KI-Gericht</span>' : ''}
+                ${isSupp ? '<span class="text-[9px] font-bold text-emerald-300 bg-emerald-500/20 px-1.5 py-0.5 rounded">Supplement</span>' : ''}
               </div>
               <div class="flex items-center gap-1">
                 ${favBtnHtml}
@@ -1101,17 +1103,7 @@ const isSupp = Boolean(item.isSupplement);
               </div>
             </div>
             ${ingredientHtml}
-            <div class="flex items-center gap-2 pt-0.5">
-              <input type="range" min="1" max="${Math.max(650, item.grams * 2)}" step="1" value="${item.grams}"
-                oninput="updateLoggedGrams(${item.id}, this.value)" class="flex-1" />
-              <div class="flex items-center gap-1 shrink-0">
-                <input type="number" min="1" max="5000" value="${item.grams}"
-                  onchange="updateLoggedGrams(${item.id}, this.value)"
-                  class="w-14 bg-slate-900 border border-slate-800 rounded px-1.5 py-0.5 text-[11px] text-right font-bold text-white outline-none focus:border-emerald-500" />
-                <span class="text-[11px] text-slate-400">g ·</span>
-                <span class="text-[11px] text-slate-200 font-semibold w-14 text-right">${kcal} kcal</span>
-              </div>
-            </div>
+            ${amountControlHtml}
           </div>`;
       }).join('');
 
@@ -1544,33 +1536,23 @@ GUIDELINES:
    - Standalone Database Match:
      Identify if it is a pure standalone item exactly in this 13-item list:
 ${dbCatalog}
-     If and only if it directly matches one of these simple single foods, set "isDatabaseMatch": true, and "matchedFoodKey" to that exact key.
+     If and only if it directly matches one of these simple single foods, set "isDatabaseMatch": true, "isSupplement": false, and "matchedFoodKey" to that exact key.
 
-  - Dietary Supplements & Nutrition Labels:
-     If the image shows a supplement facts label or tablet/capsule bottle:
-     Look at the stated serving size (e.g. 1 Tablet = 1.5g).
-     If the label says "Magnesium 400mg per tablet (1.5g)":
-     Set "estimatedTotalGrams": 1.5 (weight of 1 serving/tablet).
-     You MUST calculate the 100g value for magnesium_mg: (400 / 1.5) * 100 = 26666 mg.
-     So when NutriTracker calculates (26666 * 1.5 / 100), the logged value is EXACTLY 400 mg!
+   - Dietary Supplements (capsules, tablets, drops, powders, nutrition labels):
+     If the image shows dietary supplements or a supplement facts table:
+     Set "isSupplement": true.
+     Set "isDatabaseMatch": false and "matchedFoodKey": "CUSTOM_DISH".
+     Set "name" to the specific product name (e.g. "Magnesiumbisglycinat", "Zink", "Vitamin D3").
+     Set "estimatedTotalGrams" to the number of capsules/tablets per serving (usually 1 or 2, as indicated by label or user note).
+     In "nutrientsPer100g": Do NOT convert to 100g! Simply provide the exact active dosage per 1 capsule/tablet directly (e.g. magnesium_mg: 400 for 400mg active magnesium per capsule).
 
    - Cooked Meals, Composite Dishes, Recipes & Other Foods:
      If it is a cooked meal, recipe, or ANY food not in the 13-item list:
+     Set "isSupplement": false.
      Set "isDatabaseMatch": false and "matchedFoodKey": "CUSTOM_DISH".
-     You MUST estimate the individual ingredients that make up the dish in the "ingredients" array:
-       - name (e.g. "Rinderhackfleisch", "Spaghetti (gekocht)", "Tomatensauce", "Olivenöl")
-       - grams (realistic weight in grams)
-       - cal, pro, carbs, fat for this ingredient portion
+     You MUST estimate the individual ingredients in the "ingredients" array (name, grams, cal, pro, carbs, fat).
      You MUST estimate the overall dish portion weight in "estimatedTotalGrams".
-
-     - If the image shows a supplement (capsules, tablets, drops):
-  Set "isSupplement": true.
-  Set "name" to the product name (e.g. "Magnesium Glycinat").
-  Set "estimatedTotalGrams" to the number of capsules/tablets per serving (usually 1 or 2).
-  In "nutrientsPer100g", do NOT convert to 100g! Simply provide the exact absolute active dose per 1 capsule/tablet directly (e.g. magnesium_mg: 400).
-
-   - Complete Nutrient Profiling (for both Supplements and Custom Dishes):
-     You MUST estimate/calculate realistic nutrition per 100g in "nutrientsPer100g":
+     You MUST estimate realistic nutrition per 100g in "nutrientsPer100g":
        cal, pro, carbs, fiber, fat, sat, mono, poly, sodium_mg, potassium_mg, magnesium_mg, calcium_mg, iron_mg, zinc_mg, phosphorus_mg, vit_a_mcg, vit_c_mg, vit_d_mcg, vit_e_mg, vit_k_mcg, vit_b1_mg, vit_b2_mg, vit_b3_mg, vit_b6_mg, vit_b9_mcg, vit_b12_mcg.
 4. Provide confidence (0.0 to 1.0). Keep estimates realistic and practical.`;
 
@@ -1734,7 +1716,7 @@ ${dbCatalog}
         baseGrams: 1,
         confidence: d.confidence,
         ingredients: ingredients,
-        nutrientsPer100g: {
+nutrientsPer100g: {
           cal: Math.max(0, Number(n100.cal) || 0),
           pro: Math.max(0, Number(n100.pro) || 0),
           carbs: Math.max(0, Number(n100.carbs) || 0),
@@ -1747,6 +1729,10 @@ ${dbCatalog}
         }
       });
     }
+  }); 
+
+  state.draftItems = drafts;
+  renderDraftItems();
 
     state.draftItems = drafts;
     renderDraftItems();
